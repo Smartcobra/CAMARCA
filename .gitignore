@@ -1,0 +1,14 @@
+.env
+.env.local
+.env.*.local
+outputs/*.json
+outputs/*.png
+__pycache__/
+*.pyc
+
+data/
+.venv/
+.ruff_cache/
+.pytest_cache/
+.DS_Store
+.python-version

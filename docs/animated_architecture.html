@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAMARCA Animated Architecture</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131a2f;
+      --panel-2: #1a2340;
+      --text: #e9eefc;
+      --muted: #a6b3d1;
+      --accent: #4cc9f0;
+      --accent-2: #80ed99;
+      --line: #31406b;
+      --active: #f72585;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top left, #162243 0%, var(--bg) 40%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .header, .panel {
+      background: linear-gradient(180deg, var(--panel) 0%, #0f1529 100%);
+      border: 1px solid #253459;
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .header {
+      padding: 18px 20px;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 1.35rem;
+      letter-spacing: 0.2px;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+    }
+
+    .panel {
+      padding: 14px;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: linear-gradient(180deg, #0d1428 0%, #0b1123 100%);
+      border: 1px solid #253459;
+      border-radius: 12px;
+    }
+
+    .node {
+      fill: var(--panel-2);
+      stroke: var(--line);
+      stroke-width: 2;
+      transition: all 250ms ease;
+    }
+
+    .node-text-title {
+      fill: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+
+    .node-text-sub {
+      fill: var(--muted);
+      font-size: 11px;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+
+    .edge {
+      stroke: #3c4f7f;
+      stroke-width: 2.5;
+      fill: none;
+      marker-end: url(#arrow);
+      transition: stroke 250ms ease;
+    }
+
+    .edge.active {
+      stroke: var(--active);
+      stroke-dasharray: 8 5;
+      animation: dash 1s linear infinite;
+    }
+
+    @keyframes dash {
+      to { stroke-dashoffset: -26; }
+    }
+
+    .node.active {
+      stroke: var(--active);
+      filter: drop-shadow(0 0 8px rgba(247, 37, 133, 0.6));
+    }
+
+    .node.done {
+      stroke: var(--accent-2);
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      flex-wrap: wrap;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid #35508b;
+      background: #172447;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 180ms ease;
+    }
+
+    button:hover { background: #203161; }
+
+    .step-panel {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step-meta {
+      padding: 12px;
+      border: 1px solid #2a3c66;
+      border-radius: 10px;
+      background: #101830;
+    }
+
+    .step-title {
+      margin: 0 0 6px;
+      font-size: 1.02rem;
+    }
+
+    .step-desc {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.4;
+      font-size: 0.92rem;
+    }
+
+    .code-list {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: #d6e2ff;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .progress {
+      font-size: 0.84rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    @media (max-width: 950px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="header">
+      <h1 class="title">CAMARCA Animated Architecture Diagram</h1>
+      <p class="subtitle">Step-by-step flow with method/function logic for CLI, ingestion, analysis, fusion, and output.</p>
+    </section>
+
+    <section class="layout">
+      <div class="panel">
+        <svg viewBox="0 0 940 500" aria-label="CAMARCA architecture flow">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="#3c4f7f"></polygon>
+            </marker>
+          </defs>
+
+          <!-- Nodes -->
+          <rect id="n1" class="node" x="28" y="50" rx="12" ry="12" width="180" height="80"></rect>
+          <text class="node-text-title" x="118" y="82">Fault Prompt</text>
+          <text class="node-text-sub" x="118" y="102">User / CLI Input</text>
+
+          <rect id="n2" class="node" x="246" y="50" rx="12" ry="12" width="220" height="80"></rect>
+          <text class="node-text-title" x="356" y="82">CLI + Orchestration</text>
+          <text class="node-text-sub" x="356" y="102">`cli.py` + `pipeline.py`</text>
+
+          <rect id="n3" class="node" x="508" y="38" rx="12" ry="12" width="195" height="98"></rect>
+          <text class="node-text-title" x="605" y="74">Windowed Ingestion</text>
+          <text class="node-text-sub" x="605" y="94">`ingest.py` + cache/parquet</text>
+
+          <rect id="n4" class="node" x="28" y="202" rx="12" ry="12" width="220" height="88"></rect>
+          <text class="node-text-title" x="138" y="236">Feature Extraction</text>
+          <text class="node-text-sub" x="138" y="256">logs/traces/metrics</text>
+
+          <rect id="n5" class="node" x="286" y="202" rx="12" ry="12" width="250" height="88"></rect>
+          <text class="node-text-title" x="411" y="236">Dependency Graph</text>
+          <text class="node-text-sub" x="411" y="256">dynamic + causal edges</text>
+
+          <rect id="n6" class="node" x="572" y="202" rx="12" ry="12" width="220" height="88"></rect>
+          <text class="node-text-title" x="682" y="236">Fusion + Ranking</text>
+          <text class="node-text-sub" x="682" y="256">residual confidence</text>
+
+          <rect id="n7" class="node" x="232" y="352" rx="12" ry="12" width="230" height="90"></rect>
+          <text class="node-text-title" x="347" y="388">LLM Multi-Agent Path</text>
+          <text class="node-text-sub" x="347" y="408">`prompt_pack.py` + `rca_openai.py`</text>
+
+          <rect id="n8" class="node" x="520" y="352" rx="12" ry="12" width="250" height="90"></rect>
+          <text class="node-text-title" x="645" y="388">RCA Output</text>
+          <text class="node-text-sub" x="645" y="408">JSON + reasoning trace</text>
+
+          <!-- Edges -->
+          <path id="e1" class="edge" d="M208,90 L246,90"></path>
+          <path id="e2" class="edge" d="M466,90 L508,90"></path>
+          <path id="e3" class="edge" d="M605,136 L605,202"></path>
+          <path id="e4" class="edge" d="M248,246 L286,246"></path>
+          <path id="e5" class="edge" d="M536,246 L572,246"></path>
+          <path id="e6" class="edge" d="M682,290 L682,352"></path>
+          <path id="e7" class="edge" d="M462,397 L520,397"></path>
+          <path id="e8" class="edge" d="M411,290 L347,352"></path>
+        </svg>
+
+        <div class="legend">
+          <span><span class="dot" style="background: var(--active);"></span>Active step</span>
+          <span><span class="dot" style="background: var(--accent-2);"></span>Completed</span>
+          <span><span class="dot" style="background: #3c4f7f;"></span>Pending</span>
+        </div>
+
+        <div class="controls">
+          <button id="playBtn" type="button">Play</button>
+          <button id="pauseBtn" type="button">Pause</button>
+          <button id="nextBtn" type="button">Next Step</button>
+          <button id="resetBtn" type="button">Reset</button>
+        </div>
+      </div>
+
+      <aside class="panel step-panel">
+        <div class="step-meta">
+          <h2 class="step-title" id="stepTitle">Step 1: Fault Prompt Intake</h2>
+          <p class="step-desc" id="stepDesc"></p>
+          <ul class="code-list" id="stepFns"></ul>
+          <div class="progress" id="progressText"></div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const steps = [
+      {
+        title: "Step 1: Fault Prompt Intake",
+        desc: "System receives a natural-language incident window from the user and starts pipeline execution.",
+        fns: [
+          "camarca/cli.py :: main()",
+          "camarca/pipeline.py :: run_hybrid_from_prompt(prompt)"
+        ],
+        activeNodes: ["n1", "n2"],
+        activeEdges: ["e1"]
+      },
+      {
+        title: "Step 2: Parse Fault Window + UUID",
+        desc: "Prompt text is parsed into strict timestamps and optional UUID for deterministic window slicing.",
+        fns: [
+          "parse_fault_prompt_window(prompt)",
+          "parse_uuid_from_prompt(prompt)"
+        ],
+        activeNodes: ["n2"],
+        activeEdges: []
+      },
+      {
+        title: "Step 3: Windowed Data Loading",
+        desc: "The pipeline loads logs, traces, metrics for the incident window using cache and partitioned parquet when available.",
+        fns: [
+          "_load_window_data(start, end)",
+          "_hour_range(start, end)",
+          "_load_partitioned_window(modality, start, end)",
+          "_load_window_modality(modality, start, end)",
+          "ingest.filter_time_window(df, start_ns, end_ns)"
+        ],
+        activeNodes: ["n2", "n3"],
+        activeEdges: ["e2", "e3"]
+      },
+      {
+        title: "Step 4: Feature Engineering",
+        desc: "Per-modality features are generated and aligned at service level for anomaly and graph reasoning.",
+        fns: [
+          "extract_log_features(log_df)",
+          "extract_trace_features(trace_df)",
+          "extract_metric_features(metric_df)",
+          "merge_features(log_f, trace_f, metric_f)"
+        ],
+        activeNodes: ["n4"],
+        activeEdges: []
+      },
+      {
+        title: "Step 5: Dynamic Dependency Graph",
+        desc: "A causal service graph is built from trace structure, error propagation, and latency/call frequency effects.",
+        fns: [
+          "build_trace_graph(trace_df)",
+          "build_causal_graph(...)",
+          "build_dynamic_service_dependency_graph(...)"
+        ],
+        activeNodes: ["n4", "n5"],
+        activeEdges: ["e4"]
+      },
+      {
+        title: "Step 6: Confidence Fusion + Root Cause Ranking",
+        desc: "Signals are fused into residual confidence and final root-cause ranking, then formatted for competition output.",
+        fns: [
+          "modality_confidences(...)",
+          "residual_confidence_fusion(...)",
+          "rank_root_causes(graph)",
+          "format_competition_output(...)"
+        ],
+        activeNodes: ["n5", "n6", "n8"],
+        activeEdges: ["e5", "e6"]
+      },
+      {
+        title: "Step 7: Optional LLM Iterative Reasoning",
+        desc: "In OpenAI mode, Log/Trace/Metric/Graph/Supervisor prompts run and are validated by fallback policy before final JSON.",
+        fns: [
+          "rca_openai.run_openai_rca(...)",
+          "prompt_pack.build_log_prompt(...) / build_trace_prompt(...) / build_metric_prompt(...)",
+          "prompt_pack.build_graph_prompt(...) / build_supervisor_prompt(...)",
+          "parse_supervisor_output(text)",
+          "apply_fallback_policy(out, rca_rank_top1)"
+        ],
+        activeNodes: ["n7", "n8"],
+        activeEdges: ["e8", "e7"]
+      }
+    ];
+
+    const allNodes = ["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"];
+    const allEdges = ["e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8"];
+
+    const stepTitle = document.getElementById("stepTitle");
+    const stepDesc = document.getElementById("stepDesc");
+    const stepFns = document.getElementById("stepFns");
+    const progressText = document.getElementById("progressText");
+    const playBtn = document.getElementById("playBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    let current = 0;
+    let timer = null;
+    const stepDelayMs = 2600;
+
+    function clearClasses() {
+      allNodes.forEach((id) => {
+        const node = document.getElementById(id);
+        node.classList.remove("active", "done");
+      });
+      allEdges.forEach((id) => {
+        const edge = document.getElementById(id);
+        edge.classList.remove("active");
+      });
+    }
+
+    function renderStep(index) {
+      const s = steps[index];
+      clearClasses();
+
+      // mark completed nodes based on prior steps
+      for (let i = 0; i < index; i += 1) {
+        steps[i].activeNodes.forEach((id) => {
+          document.getElementById(id).classList.add("done");
+        });
+      }
+
+      s.activeNodes.forEach((id) => {
+        document.getElementById(id).classList.add("active");
+      });
+      s.activeEdges.forEach((id) => {
+        document.getElementById(id).classList.add("active");
+      });
+
+      stepTitle.textContent = s.title;
+      stepDesc.textContent = s.desc;
+      stepFns.innerHTML = s.fns.map((fn) => `<li><code>${fn}</code></li>`).join("");
+      progressText.textContent = `Showing ${index + 1} of ${steps.length} steps`;
+    }
+
+    function nextStep() {
+      current = (current + 1) % steps.length;
+      renderStep(current);
+    }
+
+    function play() {
+      if (timer) return;
+      timer = setInterval(nextStep, stepDelayMs);
+    }
+
+    function pause() {
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+    }
+
+    function reset() {
+      pause();
+      current = 0;
+      renderStep(current);
+    }
+
+    playBtn.addEventListener("click", play);
+    pauseBtn.addEventListener("click", pause);
+    nextBtn.addEventListener("click", nextStep);
+    resetBtn.addEventListener("click", reset);
+
+    renderStep(0);
+    play();
+  </script>
+</body>
+</html>

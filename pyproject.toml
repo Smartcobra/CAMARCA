@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "camarca"
+version = "0.1.0"
+description = "Observability RCA: logs, traces, metrics, causal call-graph ranking"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.116.0",
+    "matplotlib>=3.10.9",
+    "networkx>=3.2",
+    "openai>=2.32.0",
+    "pandas>=3.0.2",
+    "pyarrow>=24.0.0",
+    "python-dotenv>=1.2.2",
+    "scikit-learn>=1.5.0",
+    "streamlit>=1.48.0",
+    "uvicorn>=0.35.0",
+]
+
+[project.scripts]
+camarca = "camarca.cli:main"
+camarca-convert = "camarca.convert_to_parquet:main"
+camarca-convert-partitioned = "camarca.convert_to_partitioned:main"
+camarca-rca-openai = "camarca.rca_openai:main"
+camarca-hybrid = "camarca.cli:main"
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
