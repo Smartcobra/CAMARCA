@@ -758,7 +758,7 @@ def _tune_weights(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Advanced RCA evaluation with tuning and node track.")
-    p.add_argument("--ground-truth-csv", default="data/ground truth/groundtruth-2022-05-09.csv")
+    p.add_argument("--ground-truth-csv", default="data/graound_truth/groundtruth-2022-05-09.csv")
     p.add_argument("--window-before-seconds", type=int, default=120)
     p.add_argument("--window-after-seconds", type=int, default=120)
     p.add_argument("--train-ratio", type=float, default=0.6)

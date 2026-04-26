@@ -5,7 +5,7 @@ CAMARCA is organized as a single Python package with operational helpers around 
 ## Top-Level
 
 - `camarca/` - application source code
-- `data/` - input datasets (`logs`, `metrics`, `traces`, `ground truth`)
+- `data/` - input datasets (`logs`, `metrics`, `traces`, `graound_truth`)
 - `outputs/` - generated artifacts (charts, RCA JSON, caches)
 - `docs/` - design and operational docs
 - `tests/` - automated tests

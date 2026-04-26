@@ -219,7 +219,7 @@ def run_hybrid_from_prompt(prompt: str) -> HybridRCAResult:
 
 
 def compare_with_ground_truth(result: HybridRCAResult) -> HybridRCAResult:
-    gt = pd.read_csv("data/ground truth/groundtruth-2022-05-09.csv")
+    gt = pd.read_csv("data/graound_truth/groundtruth-2022-05-09.csv")
     gt["ts"] = pd.to_datetime(gt["timestamp"], unit="s", utc=True)
     gtw = gt[(gt["ts"] >= result.start) & (gt["ts"] <= result.end)].copy()
     result.ground_truth_events = gtw

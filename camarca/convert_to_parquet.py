@@ -44,7 +44,7 @@ def convert_default_dataset(
 ) -> int:
     """Convert ground truth, logs, single trace file, and all metrics CSVs under ``root``."""
     n = 0
-    gt = root / "ground truth" / "groundtruth-2022-05-09.csv"
+    gt = root / "graound_truth" / "groundtruth-2022-05-09.csv"
     if gt.is_file() and _convert_one_csv(gt, dry_run=dry_run):
         n += 1
     log_dir = root / "logs" / "2022-05-09"
