@@ -18,6 +18,7 @@ from camarca.prompt_pack import RCAAgentPack
 ISO_UTC_PATTERN = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z"
 UUID_PATTERN = r"\b[0-9a-fA-F]{8}(?:-[0-9a-zA-Z]{1,12})\b"
 METRIC_HALO_SECONDS = (60, 300, 900)
+BASELINE_GAP_SECONDS = 600
 
 
 @dataclass
@@ -34,6 +35,8 @@ class HybridRCAResult:
     log_templates: pd.DataFrame | None = None
     traces_enriched: pd.DataFrame | None = None
     metrics_scored: pd.DataFrame | None = None
+    baseline_traces_enriched: pd.DataFrame | None = None
+    baseline_metrics_scored: pd.DataFrame | None = None
 
 
 def parse_fault_prompt_window(prompt: str) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -147,14 +150,52 @@ def _modal_products(
     return log_templates, traces_e, metrics_scored
 
 
+def _load_baseline_window_data(start: pd.Timestamp, end: pd.Timestamp) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Build explicit normal-reference data from two windows:
+    - pre window: same duration immediately before fault, with a safety gap
+    - post window: same duration immediately after fault, with a safety gap
+    """
+    duration = end - start
+    gap = pd.Timedelta(seconds=BASELINE_GAP_SECONDS)
+    pre_end = start - gap
+    pre_start = pre_end - duration
+    post_start = end + gap
+    post_end = post_start + duration
+    logs_pre, traces_pre, metrics_pre = _load_window_data(pre_start, pre_end)
+    logs_post, traces_post, metrics_post = _load_window_data(post_start, post_end)
+
+    def _merge(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
+        if a.empty and b.empty:
+            return pd.DataFrame()
+        if a.empty:
+            return b
+        if b.empty:
+            return a
+        return pd.concat([a, b], ignore_index=True)
+
+    return (
+        _merge(logs_pre, logs_post),
+        _merge(traces_pre, traces_post),
+        _merge(metrics_pre, metrics_post),
+    )
+
+
 def run_hybrid_window(start: pd.Timestamp, end: pd.Timestamp) -> HybridRCAResult:
     logs, traces, metrics = _load_window_data(start, end)
     log_templates, traces_e, metrics_scored = _modal_products(logs, traces, metrics)
+    base_logs, base_traces, base_metrics = _load_baseline_window_data(start, end)
+    base_log_templates, base_traces_e, base_metrics_scored = _modal_products(base_logs, base_traces, base_metrics)
     dynamic_graph = analysis.build_dynamic_service_dependency_graph(
         traces_e, log_templates, metrics_scored
     )
     fused_ranking = analysis.residual_confidence_fusion(
-        dynamic_graph, traces_e, log_templates, metrics_scored
+        dynamic_graph,
+        traces_e,
+        log_templates,
+        metrics_scored,
+        baseline_traces_enriched=base_traces_e,
+        baseline_metrics_scored=base_metrics_scored,
     )
     conf = analysis.modality_confidences(traces_e, log_templates, metrics_scored)
     return HybridRCAResult(
@@ -167,6 +208,8 @@ def run_hybrid_window(start: pd.Timestamp, end: pd.Timestamp) -> HybridRCAResult
         log_templates=log_templates,
         traces_enriched=traces_e,
         metrics_scored=metrics_scored,
+        baseline_traces_enriched=base_traces_e,
+        baseline_metrics_scored=base_metrics_scored,
     )
 
 

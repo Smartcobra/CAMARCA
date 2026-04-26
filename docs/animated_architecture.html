@@ -203,6 +203,55 @@
       margin-top: 4px;
     }
 
+    .agent-meta {
+      padding: 12px;
+      border: 1px solid #2a3c66;
+      border-radius: 10px;
+      background: #0d1730;
+    }
+
+    .agent-title {
+      margin: 0 0 8px;
+      font-size: 0.98rem;
+    }
+
+    .agent-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #d8e6ff;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .agent-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.83rem;
+      line-height: 1.35;
+    }
+
+    .llm-meta {
+      padding: 12px;
+      border: 1px solid #3a2f68;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #171334 0%, #1d163f 100%);
+      display: none;
+    }
+
+    .llm-title {
+      margin: 0 0 8px;
+      font-size: 0.98rem;
+      color: #f1e9ff;
+    }
+
+    .llm-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #e8dcff;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
     @media (max-width: 950px) {
       .layout { grid-template-columns: 1fr; }
     }
@@ -289,6 +338,15 @@
           <ul class="code-list" id="stepFns"></ul>
           <div class="progress" id="progressText"></div>
         </div>
+        <div class="agent-meta">
+          <h3 class="agent-title" id="agentTitle">Pipeline Agent Focus</h3>
+          <ul class="agent-list" id="agentList"></ul>
+          <div class="agent-note" id="agentNote"></div>
+        </div>
+        <div class="llm-meta" id="llmMeta">
+          <h3 class="llm-title">LLM Multi-Agent Details</h3>
+          <ul class="llm-list" id="llmList"></ul>
+        </div>
       </aside>
     </section>
   </main>
@@ -302,6 +360,11 @@
           "camarca/cli.py :: main()",
           "camarca/pipeline.py :: run_hybrid_from_prompt(prompt)"
         ],
+        agentFocus: [
+          "Orchestrator receives prompt and sets execution context",
+          "Prepares modality-specific agent pipeline for downstream reasoning"
+        ],
+        agentNote: "At this stage, no analysis agent runs yet. The system only initializes flow state.",
         activeNodes: ["n1", "n2"],
         activeEdges: ["e1"]
       },
@@ -312,6 +375,11 @@
           "parse_fault_prompt_window(prompt)",
           "parse_uuid_from_prompt(prompt)"
         ],
+        agentFocus: [
+          "Window parser agent extracts start/end timestamps",
+          "Identity parser extracts UUID/id token for output linkage"
+        ],
+        agentNote: "Parsed window controls what evidence each downstream agent can observe.",
         activeNodes: ["n2"],
         activeEdges: []
       },
@@ -325,6 +393,11 @@
           "_load_window_modality(modality, start, end)",
           "ingest.filter_time_window(df, start_ns, end_ns)"
         ],
+        agentFocus: [
+          "Ingestion agent loads logs, traces, metrics within window",
+          "Cache/partition selector agent prefers partitioned parquet when available"
+        ],
+        agentNote: "Evidence quality here directly impacts all later agents and final confidence.",
         activeNodes: ["n2", "n3"],
         activeEdges: ["e2", "e3"]
       },
@@ -337,6 +410,12 @@
           "extract_metric_features(metric_df)",
           "merge_features(log_f, trace_f, metric_f)"
         ],
+        agentFocus: [
+          "LogAgent builds templates and frequency evidence",
+          "TraceAgent extracts service-call patterns",
+          "MetricAgent scores anomalies from service-level aggregates"
+        ],
+        agentNote: "These three modality agents run in parallel conceptually and emit structured signals.",
         activeNodes: ["n4"],
         activeEdges: []
       },
@@ -348,6 +427,11 @@
           "build_causal_graph(...)",
           "build_dynamic_service_dependency_graph(...)"
         ],
+        agentFocus: [
+          "GraphAgent fuses trace topology with metric/log influence",
+          "Builds weighted causal edges for propagation reasoning"
+        ],
+        agentNote: "GraphAgent transforms isolated evidence into a dependency-aware causal model.",
         activeNodes: ["n4", "n5"],
         activeEdges: ["e4"]
       },
@@ -360,6 +444,11 @@
           "rank_root_causes(graph)",
           "format_competition_output(...)"
         ],
+        agentFocus: [
+          "Fusion agent combines trace/metric/log/graph confidence",
+          "Ranking agent outputs top suspected root-cause components"
+        ],
+        agentNote: "This is the deterministic hybrid path used even without LLM supervision.",
         activeNodes: ["n5", "n6", "n8"],
         activeEdges: ["e5", "e6"]
       },
@@ -373,8 +462,67 @@
           "parse_supervisor_output(text)",
           "apply_fallback_policy(out, rca_rank_top1)"
         ],
+        agentFocus: [
+          "LogAgent: interprets textual log evidence and templates",
+          "TraceAgent: reasons over upstream/downstream call paths",
+          "MetricAgent: explains anomalous KPIs and trend shifts",
+          "GraphReasoningAgent: links modality signals through causal graph",
+          "SupervisorAgent: validates and emits final structured RCA output"
+        ],
+        llmDetails: [
+          "Input payloads are prepared for each specialist agent from windowed telemetry slices",
+          "GraphReasoningAgent receives cross-modality summaries and builds causal chain",
+          "SupervisorAgent resolves conflicts and enforces output schema contract"
+        ],
+        agentNote: "Supervisor enforces JSON contract and fallback policy when confidence is insufficient.",
         activeNodes: ["n7", "n8"],
         activeEdges: ["e8", "e7"]
+      },
+      {
+        title: "Step 8: Multi-Agent Round Execution",
+        desc: "Each LLM specialist runs its first pass, then shares intermediate findings for cross-modality refinement.",
+        fns: [
+          "RCAAgentPack.trace_agent(state)",
+          "RCAAgentPack.metric_agent(state)",
+          "RCAAgentPack.log_agent(state)",
+          "RCAAgentPack.graph_agent(state)"
+        ],
+        agentFocus: [
+          "TraceAgent proposes dependency-path hypotheses",
+          "MetricAgent validates anomalies around affected services",
+          "LogAgent confirms textual evidence and signatures",
+          "GraphReasoningAgent merges all findings into causal narrative"
+        ],
+        llmDetails: [
+          "Round-1 outputs are fed into follow-up refinement prompts",
+          "Agents cross-check contradictions (for example, metric anomaly without trace impact)",
+          "State carries intermediate reasoning between nodes in the iterative loop"
+        ],
+        agentNote: "This stage represents the iterative hypothesis -> validate -> refine loop before supervisor finalization.",
+        activeNodes: ["n7"],
+        activeEdges: ["e8"]
+      },
+      {
+        title: "Step 9: Supervisor Contract + Fallback",
+        desc: "Supervisor validates schema, confidence, and consistency; fallback policy rewrites low-confidence results to safe output.",
+        fns: [
+          "parse_supervisor_output(text)",
+          "apply_fallback_policy(out, rca_rank_top1)",
+          "build_supervisor_prompt(graph_reasoning)"
+        ],
+        agentFocus: [
+          "SupervisorAgent enforces strict RCA JSON contract",
+          "Fallback policy returns insufficient_evidence when confidence is below threshold",
+          "Final response remains machine-readable and audit-friendly"
+        ],
+        llmDetails: [
+          "Supervisor output is parsed and validated against required RCA keys",
+          "Low-confidence or invalid outputs are replaced with deterministic fallback",
+          "Final payload includes reason + reasoning trace for downstream consumers"
+        ],
+        agentNote: "This gate avoids overconfident conclusions and keeps output robust for production use.",
+        activeNodes: ["n7", "n8"],
+        activeEdges: ["e7"]
       }
     ];
 
@@ -385,6 +533,11 @@
     const stepDesc = document.getElementById("stepDesc");
     const stepFns = document.getElementById("stepFns");
     const progressText = document.getElementById("progressText");
+    const agentTitle = document.getElementById("agentTitle");
+    const agentList = document.getElementById("agentList");
+    const agentNote = document.getElementById("agentNote");
+    const llmMeta = document.getElementById("llmMeta");
+    const llmList = document.getElementById("llmList");
     const playBtn = document.getElementById("playBtn");
     const pauseBtn = document.getElementById("pauseBtn");
     const nextBtn = document.getElementById("nextBtn");
@@ -426,6 +579,16 @@
       stepTitle.textContent = s.title;
       stepDesc.textContent = s.desc;
       stepFns.innerHTML = s.fns.map((fn) => `<li><code>${fn}</code></li>`).join("");
+      agentTitle.textContent = `Pipeline Agent Focus (Step ${index + 1})`;
+      agentList.innerHTML = (s.agentFocus || []).map((item) => `<li>${item}</li>`).join("");
+      agentNote.textContent = s.agentNote || "";
+      if (s.llmDetails && s.llmDetails.length) {
+        llmMeta.style.display = "block";
+        llmList.innerHTML = s.llmDetails.map((item) => `<li>${item}</li>`).join("");
+      } else {
+        llmMeta.style.display = "none";
+        llmList.innerHTML = "";
+      }
       progressText.textContent = `Showing ${index + 1} of ${steps.length} steps`;
     }
 

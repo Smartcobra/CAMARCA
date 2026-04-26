@@ -3,6 +3,7 @@
 .env.*.local
 outputs/*.json
 outputs/*.png
+outputs/
 __pycache__/
 *.pyc
 

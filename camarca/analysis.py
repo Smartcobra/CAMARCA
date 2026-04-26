@@ -439,6 +439,111 @@ def _normalize_series(s: pd.Series) -> pd.Series:
     return s / vmax
 
 
+def _symmetric_ratio(a: float, b: float, eps: float = 1e-9) -> float:
+    return abs(a - b) / (((a + b) / 2.0) + eps)
+
+
+def _service_baseline_delta(
+    traces_enriched: pd.DataFrame,
+    metrics_scored: pd.DataFrame,
+    baseline_traces_enriched: pd.DataFrame | None = None,
+    baseline_metrics_scored: pd.DataFrame | None = None,
+) -> pd.Series:
+    """
+    Estimate per-service fault-vs-reference deviation when explicit normal windows
+    are unavailable in the current pipeline call path.
+
+    Reference is built from cross-service medians/quantiles in the same window.
+    This is a weaker proxy than true normal windows but still provides a robust
+    baseline-delta signal for fusion.
+    """
+    values: dict[str, float] = {}
+
+    # Metrics: prefer explicit normal baseline windows when available.
+    if metrics_scored is not None and not metrics_scored.empty and "service" in metrics_scored.columns:
+        m = metrics_scored.copy()
+        m["service"] = m["service"].astype(str).map(normalize_metric_service_label)
+        metric_cols = [c for c in ("rr", "sr", "mrt", "value", "count", "row_count") if c in m.columns]
+        if metric_cols:
+            bm = baseline_metrics_scored.copy() if baseline_metrics_scored is not None else pd.DataFrame()
+            if not bm.empty and "service" in bm.columns:
+                bm = bm.copy()
+                bm["service"] = bm["service"].astype(str).map(normalize_metric_service_label)
+            for col in metric_cols:
+                svc_fault_med = (
+                    pd.to_numeric(m[col], errors="coerce")
+                    .groupby(m["service"])
+                    .median()
+                    .dropna()
+                )
+                if not bm.empty and col in bm.columns:
+                    svc_base_med = (
+                        pd.to_numeric(bm[col], errors="coerce")
+                        .groupby(bm["service"])
+                        .median()
+                        .dropna()
+                    )
+                    for svc, fv in svc_fault_med.items():
+                        bv = float(svc_base_med.get(svc, 0.0))
+                        if bv <= 0 and float(fv) <= 0:
+                            continue
+                        sr = _symmetric_ratio(float(fv), float(bv))
+                        if sr >= 0.05:
+                            values[str(svc)] = values.get(str(svc), 0.0) + min(sr, 5.0)
+                else:
+                    g_med = float(pd.to_numeric(m[col], errors="coerce").median(skipna=True) or 0.0)
+                    if g_med <= 0:
+                        continue
+                    for svc, v in svc_fault_med.items():
+                        sr = _symmetric_ratio(float(v), g_med)
+                        if sr >= 0.05:
+                            values[str(svc)] = values.get(str(svc), 0.0) + min(sr, 5.0)
+
+    # Traces: prefer explicit normal baseline windows when available.
+    if (
+        traces_enriched is not None
+        and not traces_enriched.empty
+        and {"service", "duration"}.issubset(traces_enriched.columns)
+    ):
+        t = traces_enriched.copy()
+        t["service"] = t["service"].astype(str)
+        svc_fault_med = (
+            pd.to_numeric(t["duration"], errors="coerce")
+            .groupby(t["service"])
+            .median()
+            .dropna()
+        )
+        bt = baseline_traces_enriched.copy() if baseline_traces_enriched is not None else pd.DataFrame()
+        if not bt.empty and {"service", "duration"}.issubset(bt.columns):
+            bt = bt.copy()
+            bt["service"] = bt["service"].astype(str)
+            svc_base_med = (
+                pd.to_numeric(bt["duration"], errors="coerce")
+                .groupby(bt["service"])
+                .median()
+                .dropna()
+            )
+            for svc, fv in svc_fault_med.items():
+                bv = float(svc_base_med.get(svc, 0.0))
+                if bv <= 0 and float(fv) <= 0:
+                    continue
+                sr = _symmetric_ratio(float(fv), float(bv))
+                if sr >= 0.05:
+                    values[str(svc)] = values.get(str(svc), 0.0) + min(sr, 5.0)
+        else:
+            g_med = float(pd.to_numeric(t["duration"], errors="coerce").median(skipna=True) or 0.0)
+            if g_med > 0:
+                for svc, v in svc_fault_med.items():
+                    sr = _symmetric_ratio(float(v), g_med)
+                    if sr >= 0.05:
+                        values[str(svc)] = values.get(str(svc), 0.0) + min(sr, 5.0)
+
+    if not values:
+        return pd.Series(dtype="float64")
+    s = pd.Series(values, dtype="float64")
+    return _normalize_series(s)
+
+
 def build_dynamic_service_dependency_graph(
     traces_enriched: pd.DataFrame,
     log_templates: pd.DataFrame,
@@ -516,13 +621,26 @@ def build_dynamic_service_dependency_graph(
     else:
         met_n = pd.Series(dtype="float64")
 
+    # Explicit status-code anomalies from traces (when available) provide
+    # high-precision fault evidence and should influence edge propagation.
+    if "status_code" in t.columns:
+        t_status = t.copy()
+        t_status["status_code_num"] = pd.to_numeric(t_status["status_code"], errors="coerce").fillna(0)
+        t_status["status_is_anomaly"] = (t_status["status_code_num"] != 0).astype(int)
+        tr_status = t_status.groupby("service")["status_is_anomaly"].sum().astype("float64")
+        tr_status_n = _normalize_series(tr_status)
+    else:
+        tr_status_n = pd.Series(dtype="float64")
+
     e = freq.merge(dur[["parent_service", "service", "latency_anomaly_n"]], on=["parent_service", "service"], how="left")
     e["latency_anomaly_n"] = e["latency_anomaly_n"].fillna(0.0)
     e["error_propagation_n"] = e.apply(
         lambda r: float(log_err_n.get(r["parent_service"], 0.0))
         + float(log_err_n.get(r["service"], 0.0))
         + float(met_n.get(r["parent_service"], 0.0))
-        + float(met_n.get(r["service"], 0.0)),
+        + float(met_n.get(r["service"], 0.0))
+        + float(tr_status_n.get(r["parent_service"], 0.0))
+        + float(tr_status_n.get(r["service"], 0.0)),
         axis=1,
     )
     e["error_propagation_n"] = _normalize_series(e["error_propagation_n"])
@@ -561,6 +679,11 @@ def modality_confidences(
         med = float(traces_enriched["duration"].median())
         if med > 0:
             trace_conf = float((traces_enriched["duration"] > (2.0 * med)).mean())
+    # Status-code errors carry strong trace evidence; blend with duration-based trace confidence.
+    if traces_enriched is not None and not traces_enriched.empty and "status_code" in traces_enriched.columns:
+        st = pd.to_numeric(traces_enriched["status_code"], errors="coerce").fillna(0)
+        status_conf = float((st != 0).mean())
+        trace_conf = 0.7 * float(trace_conf) + 0.3 * float(status_conf)
     metric_conf = 0.0
     if metrics_scored is not None and not metrics_scored.empty and "is_anomaly" in metrics_scored.columns:
         metric_conf = float(metrics_scored["is_anomaly"].mean())
@@ -582,6 +705,11 @@ def residual_confidence_fusion(
     traces_enriched: pd.DataFrame,
     log_templates: pd.DataFrame,
     metrics_scored: pd.DataFrame,
+    *,
+    fusion_weights: dict[str, float] | None = None,
+    modality_boosts: dict[str, float] | None = None,
+    baseline_traces_enriched: pd.DataFrame | None = None,
+    baseline_metrics_scored: pd.DataFrame | None = None,
 ) -> list[tuple[str, float]]:
     """
     Improved RC-LLM style fusion:
@@ -592,6 +720,14 @@ def residual_confidence_fusion(
       w4 * graph_causality_score
     """
     conf = modality_confidences(traces_enriched, log_templates, metrics_scored)
+    w_trace = float((fusion_weights or {}).get("trace", HYBRID_W_TRACE_CONF))
+    w_metric = float((fusion_weights or {}).get("metric", HYBRID_W_METRIC_CONF))
+    w_log = float((fusion_weights or {}).get("log", HYBRID_W_LOG_CONF))
+    w_graph = float((fusion_weights or {}).get("graph", HYBRID_W_GRAPH_CAUSAL))
+    b_trace = float((modality_boosts or {}).get("trace", 1.0))
+    b_metric = float((modality_boosts or {}).get("metric", 1.0))
+    b_log = float((modality_boosts or {}).get("log", 1.0))
+    b_graph = float((modality_boosts or {}).get("graph", 1.0))
     # per-service modality signals
     services = set(dynamic_graph.nodes)
     services.discard("__root__")
@@ -600,6 +736,17 @@ def residual_confidence_fusion(
     if traces_enriched is not None and not traces_enriched.empty and "service" in traces_enriched.columns and "duration" in traces_enriched.columns:
         tr = traces_enriched.groupby("service")["duration"].mean()
         trace_node = _normalize_series(tr.astype("float64"))
+    if traces_enriched is not None and not traces_enriched.empty and "service" in traces_enriched.columns and "status_code" in traces_enriched.columns:
+        tr_s = traces_enriched.copy()
+        tr_s["status_code_num"] = pd.to_numeric(tr_s["status_code"], errors="coerce").fillna(0)
+        tr_s["status_is_anomaly"] = (tr_s["status_code_num"] != 0).astype(int)
+        trace_status = tr_s.groupby("service")["status_is_anomaly"].sum().astype("float64")
+        trace_status = _normalize_series(trace_status)
+        # Blend duration-based and status-based trace service signals.
+        if trace_node.empty:
+            trace_node = trace_status
+        else:
+            trace_node = 0.7 * trace_node.add(trace_status, fill_value=0.0) + 0.3 * trace_status
 
     log_node = pd.Series(dtype="float64")
     if log_templates is not None and not log_templates.empty and "service" in log_templates.columns and "count" in log_templates.columns:
@@ -610,6 +757,15 @@ def residual_confidence_fusion(
     if metrics_scored is not None and not metrics_scored.empty and "service" in metrics_scored.columns and "is_anomaly" in metrics_scored.columns:
         mm = metrics_scored[metrics_scored["is_anomaly"]].groupby("service").size().astype("float64")
         metric_node = _normalize_series(mm)
+
+    # Baseline delta signal (symmetric-ratio style): service deviation from
+    # window reference distributions in traces/metrics.
+    baseline_delta_node = _service_baseline_delta(
+        traces_enriched,
+        metrics_scored,
+        baseline_traces_enriched=baseline_traces_enriched,
+        baseline_metrics_scored=baseline_metrics_scored,
+    )
 
     # Raw sums for edge pressure; fan-in dampening is applied when building graph_node
     # so many parallel callers (catalog) do not always beat a strong single path (cart).
@@ -662,13 +818,15 @@ def residual_confidence_fusion(
     fused: list[tuple[str, float]] = []
     for s in services:
         score = (
-            HYBRID_W_TRACE_CONF * conf["trace_confidence"] * float(trace_node.get(s, 0.0))
-            + HYBRID_W_METRIC_CONF * conf["metric_confidence"] * float(metric_node.get(s, 0.0))
-            + HYBRID_W_LOG_CONF
+            w_trace * b_trace * conf["trace_confidence"] * float(trace_node.get(s, 0.0))
+            + w_metric * b_metric * conf["metric_confidence"] * float(metric_node.get(s, 0.0))
+            + w_log
+            * b_log
             * conf["log_confidence"]
             * float(log_node.get(s, 0.0))
             * float(log_scale.get(s, 1.0))
-            + HYBRID_W_GRAPH_CAUSAL * float(graph_node.get(s, 0.0))
+            + w_graph * b_graph * float(graph_node.get(s, 0.0))
+            + 0.18 * float(baseline_delta_node.get(s, 0.0))
         )
         od = int(dynamic_graph.out_degree(s))
         floor = int(GATEWAY_OUT_DEGREE_FLOOR)
