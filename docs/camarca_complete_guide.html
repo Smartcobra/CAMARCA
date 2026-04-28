@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAMARCA — Complete Technical Guide</title>
+  <style>
+    :root {
+      --bg: #f6f8fc;
+      --card: #ffffff;
+      --text: #1a2333;
+      --muted: #5a6578;
+      --border: #d8e0ef;
+      --accent: #2563eb;
+      --accent-soft: #eff4ff;
+      --code-bg: #0f172a;
+      --code-text: #e2e8f0;
+      --note: #fef3c7;
+      --note-border: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      font-size: 16px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 60%, #1e293b 100%);
+      color: #f1f5f9;
+      padding: 2.5rem 1.5rem 3rem;
+    }
+    .hero h1 { margin: 0 0 0.5rem; font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; }
+    .hero p { margin: 0; max-width: 52rem; color: #cbd5e1; font-size: 1.05rem; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 1.25rem 3rem; }
+    .layout { display: grid; grid-template-columns: 220px 1fr; gap: 2rem; align-items: start; margin-top: -2rem; }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; margin-top: -1rem; }
+      nav.toc { position: static !important; }
+    }
+    nav.toc {
+      position: sticky;
+      top: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1rem 1.1rem;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+    }
+    nav.toc strong { display: block; margin-bottom: 0.6rem; color: var(--text); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    nav.toc a { display: block; color: var(--accent); text-decoration: none; padding: 0.25rem 0; border-bottom: 1px solid transparent; }
+    nav.toc a:hover { text-decoration: underline; }
+    nav.toc .sub { padding-left: 0.75rem; font-size: 0.85rem; color: var(--muted); }
+    main { min-width: 0; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 1.5rem 1.75rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+      scroll-margin-top: 14px;
+    }
+    section h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.35rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: -0.02em;
+    }
+    section h3 { margin: 1.25rem 0 0.5rem; font-size: 1.1rem; color: #334155; }
+    section h4 { margin: 1rem 0 0.35rem; font-size: 1rem; color: #475569; }
+    p { margin: 0.65rem 0; color: #334155; }
+    ul, ol { margin: 0.5rem 0 0.75rem; padding-left: 1.35rem; color: #334155; }
+    li { margin: 0.35rem 0; }
+    code.inline {
+      background: var(--accent-soft);
+      color: #1d4ed8;
+      padding: 0.12em 0.4em;
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    }
+    pre.example {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 1rem 1.1rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      margin: 0.75rem 0;
+      border: 1px solid #334155;
+    }
+    pre.example code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+    .note {
+      background: var(--note);
+      border-left: 4px solid var(--note-border);
+      padding: 0.75rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.95rem;
+      color: #78350f;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      margin: 0.75rem 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f5f9; font-weight: 600; color: #0f172a; }
+    tr:nth-child(even) td { background: #fafbfc; }
+    .mermaid-wrap {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      margin: 1rem 0;
+      overflow-x: auto;
+    }
+    .caption { font-size: 0.85rem; color: var(--muted); margin-top: 0.35rem; }
+    .kbd { font-family: inherit; font-size: 0.9em; border: 1px solid var(--border); padding: 0.1em 0.45em; border-radius: 4px; background: #f1f5f9; }
+    .arch-actions { margin: 0.5rem 0 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .arch-zoom-btn {
+      border: 1px solid #73c8ff;
+      color: #0b3d8e;
+      background: linear-gradient(135deg, #eef8ff 0%, #d9efff 45%, #e6f6ff 100%);
+      border-radius: 8px;
+      padding: 0.46rem 0.8rem;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .arch-zoom-btn:hover { background: linear-gradient(135deg, #dff2ff 0%, #c6e7ff 100%); }
+    #arch-diagram-wrap,
+    #layered-diagram-wrap {
+      padding: 1.1rem 1.1rem 1.25rem;
+      border: 1px solid #c6d6f5;
+      background: linear-gradient(180deg, #fdfefe 0%, #f4f8ff 100%);
+    }
+    #arch-diagram-wrap svg {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      height: auto;
+    }
+    #layered-diagram-wrap svg {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      height: auto;
+    }
+    #arch-diagram-wrap svg text,
+    #layered-diagram-wrap svg text,
+    #arch-modal-body svg text {
+      font-size: 16px !important;
+      font-weight: 600;
+      fill: #10233f !important;
+    }
+    #arch-diagram-wrap svg .node rect,
+    #arch-diagram-wrap svg .node path,
+    #arch-diagram-wrap svg .node polygon,
+    #layered-diagram-wrap svg .node rect,
+    #layered-diagram-wrap svg .node path,
+    #layered-diagram-wrap svg .node polygon,
+    #arch-modal-body svg .node rect,
+    #arch-modal-body svg .node path,
+    #arch-modal-body svg .node polygon {
+      animation: nodePulse 2.4s ease-in-out infinite;
+      transform-origin: center;
+    }
+    #arch-diagram-wrap svg .edgePath path,
+    #layered-diagram-wrap svg .edgePath path,
+    #arch-modal-body svg .edgePath path {
+      stroke-dasharray: 8 6 !important;
+      animation: edgeFlow 8s linear infinite !important;
+    }
+    #arch-diagram-wrap svg .cluster rect,
+    #layered-diagram-wrap svg .cluster rect,
+    #arch-modal-body svg .cluster rect {
+      animation: clusterGlow 3.2s ease-in-out infinite;
+    }
+    @keyframes edgeFlow {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: -140; }
+    }
+    @keyframes nodePulse {
+      0%, 100% { filter: drop-shadow(0 0 0 rgba(37, 99, 235, 0.08)); }
+      50% { filter: drop-shadow(0 0 5px rgba(37, 99, 235, 0.35)); }
+    }
+    @keyframes clusterGlow {
+      0%, 100% { opacity: 0.9; }
+      50% { opacity: 1; }
+    }
+    .arch-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 1rem;
+    }
+    .arch-modal.open { display: flex; }
+    .arch-modal-card {
+      width: min(1400px, 99vw);
+      max-height: 94vh;
+      overflow: auto;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.9rem;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+    }
+    .arch-modal-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      margin-bottom: 0.65rem;
+    }
+    .arch-modal-title { font-weight: 700; color: #1e293b; }
+    .arch-close-btn {
+      border: 1px solid #d1d8e8;
+      border-radius: 8px;
+      background: #f8fafc;
+      cursor: pointer;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.55rem;
+      font-weight: 600;
+    }
+    .arch-modal-body {
+      background: linear-gradient(180deg, #fafdff 0%, #f0f8ff 100%);
+      border: 1px solid #d4e2fb;
+      border-radius: 10px;
+      padding: 0.7rem;
+    }
+    .arch-modal-body .mermaid svg,
+    .arch-modal-body svg {
+      width: 100%;
+      min-width: 1220px;
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap" style="max-width: 1100px;">
+      <h1>CAMARCA — Complete Technical Guide</h1>
+      <p>
+        Production-oriented <strong>root cause analysis (RCA)</strong> for microservice incidents using
+        <strong>logs</strong>, <strong>traces</strong>, and <strong>metrics</strong>. This document maps the repository:
+        architecture, each major module, configuration, data flow, and copy-paste examples.
+      </p>
+    </div>
+  </header>
+
+  <div class="wrap" style="max-width: 1100px;">
+    <div class="layout">
+      <nav class="toc" aria-label="Table of contents">
+        <strong>Contents</strong>
+        <a href="#overview">1. Overview</a>
+        <a href="#architecture">2. Architecture</a>
+        <a href="#pipeline-detail">3. Pipeline (step by step)</a>
+        <a href="#modules">4. Module reference</a>
+        <div class="sub">
+          <a href="#mod-ingest">ingest</a>
+          <a href="#mod-pipeline">pipeline</a>
+          <a href="#mod-analysis">analysis</a>
+          <a href="#mod-cache">cache_store</a>
+          <a href="#mod-prompt">prompt_pack &amp; LLM</a>
+          <a href="#mod-cli">cli &amp; entrypoints</a>
+          <a href="#mod-api">web_api &amp; Streamlit</a>
+          <a href="#mod-eval">advanced_evaluation</a>
+        </div>
+        <a href="#data-layout">5. Data &amp; outputs</a>
+        <a href="#config">6. Configuration</a>
+        <a href="#examples">7. Runnable examples</a>
+        <a href="#fusion">8. Fusion math (summary)</a>
+        <a href="#related">9. Related docs</a>
+      </nav>
+
+      <main>
+        <section id="overview">
+          <h2>1. Overview</h2>
+          <p>
+            CAMARCA implements a <span class="inline">hybrid</span> RCA stack: classical multi-modal signal processing
+            (graph + statistics) plus optional <span class="inline">LLM</span> agents for narrative reasoning and validation.
+            The default ranking path does <em>not</em> require an API key; OpenAI is optional for richer explanations.
+          </p>
+          <p><strong>Typical inputs:</strong> a fault time window (UTC ISO timestamps in a prompt or explicit <span class="inline">pd.Timestamp</span> range).</p>
+          <p><strong>Typical outputs:</strong> a ranked list of candidate services, modality confidence scores, an optional competition-style JSON (component, reason, reasoning trace), and debug tables on the result object.</p>
+        </section>
+
+        <section id="architecture">
+          <h2>2. High-level architecture</h2>
+          <p>Users reach the engine through the CLI, Python API, HTTP API, or Streamlit UI. All paths converge on <code class="inline">camarca/pipeline.py</code> for the hybrid run.</p>
+          <div class="arch-actions">
+            <button class="arch-zoom-btn" type="button" onclick="openArchitecturePopup()">Open large animated view</button>
+          </div>
+          <div class="mermaid-wrap" id="arch-diagram-wrap">
+            <pre class="mermaid arch-mermaid">
+flowchart TB
+  subgraph Users
+    CLI["CLI: camarca.cli"]
+    PY["Python: run_hybrid_window / run_hybrid_from_prompt"]
+    HTTP["FastAPI: web_api"]
+    ST["Streamlit UI"]
+  end
+
+  subgraph Core["Hybrid RCA core"]
+    P["pipeline.py"]
+    I["ingest.py — load, time normalize, bucket"]
+    A["analysis.py — graph, anomalies, fusion"]
+  end
+
+  subgraph Data["data/"]
+    L[Logs]
+    T[Traces]
+    M[Metrics]
+    GT[Ground truth CSV]
+  end
+
+  subgraph Store["Cache & outputs"]
+    C["outputs/cache/windows/"]
+    O["outputs/ — JSON, charts, eval"]
+  end
+
+  CLI --> P
+  PY --> P
+  HTTP --> P
+  ST --> HTTP
+
+  L --> I
+  T --> I
+  M --> I
+  I --> C
+  C --> P
+  I --> P
+  P --> A
+  A --> O
+  GT --> P
+            </pre>
+          </div>
+          <p class="caption">End-to-end: observability data is windowed, optionally cached, analyzed, and fused into a ranked root-cause list.</p>
+
+          <h3>Layered data loading</h3>
+          <p>Window loads try, in order: (1) Parquet slice in <code class="inline">outputs/cache/windows/</code>, (2) hour-partitioned Parquet under <code class="inline">data/partitioned/</code>, (3) full-day CSV/Parquet from <code class="inline">data/</code> with a time filter.</p>
+          <div class="arch-actions">
+            <button class="arch-zoom-btn" type="button" onclick="openLayeredPopup()">Open large animated layered view</button>
+          </div>
+          <div class="mermaid-wrap" id="layered-diagram-wrap">
+            <pre class="mermaid">
+flowchart LR
+  W[Fault window] --> L1{Window cache hit?}
+  L1 -->|yes| C[Read cached Parquet]
+  L1 -->|no| P2[Partitioned hourly Parquet?]
+  P2 -->|yes| Save[Cache slice + return]
+  P2 -->|no| Full[Load full day + filter]
+  Full --> Save2[Cache slice + return]
+            </pre>
+          </div>
+        </section>
+
+        <section id="pipeline-detail">
+          <h2>3. Pipeline: what runs in order</h2>
+          <p>The function <code class="inline">run_hybrid_window(start, end)</code> in <code class="inline">camarca/pipeline.py</code> orchestrates the run. The following is the logical sequence.</p>
+          <ol>
+            <li><strong>Load fault-window data</strong> — <code class="inline">_load_window_data</code>: logs, traces, metrics filtered to <code class="inline">[start, end)</code> in nanoseconds. Metrics may expand with a short “halo” (60s / 300s / 900s) if the strict slice is empty (sampling can miss very short windows).</li>
+            <li><strong>Per-modality products</strong> — <code class="inline">_modal_products</code>: log templates, trace enrichment (parent service), metric prep + <strong>IsolationForest</strong> anomaly flags.</li>
+            <li><strong>Baseline windows</strong> — <code class="inline">_load_baseline_window_data</code>: same duration <em>before</em> and <em>after</em> the fault, separated by a 600s gap, for normal-reference comparison in fusion.</li>
+            <li><strong>Dynamic graph</strong> — <code class="inline">build_dynamic_service_dependency_graph</code> (NetworkX <code class="inline">DiGraph</code>) from traces, templates, and scored metrics; edges carry causality-style scores.</li>
+            <li><strong>Residual confidence fusion</strong> — <code class="inline">residual_confidence_fusion</code>: per-service score combining trace, metric, log, and graph terms plus baseline delta (see section 8).</li>
+            <li><strong>Modality confidences</strong> — <code class="inline">modality_confidences</code>: global trust weights for trace / metric / log in the window.</li>
+            <li><strong>Result object</strong> — <code class="inline">HybridRCAResult</code> with rankings, graph, dataframes, and baselines for downstream formatting or LLM calls.</li>
+          </ol>
+          <div class="mermaid-wrap">
+            <pre class="mermaid">
+flowchart TB
+  S[Start / End timestamps] --> D[Load logs, traces, metrics]
+  D --> M[Templates + enrich traces + score metrics]
+  M --> B[Load pre/post baselines]
+  M --> G[Build dynamic DiGraph]
+  B --> F[Fuse: residual_confidence_fusion]
+  G --> F
+  M --> MC[modality_confidences]
+  F --> R[HybridRCAResult]
+  MC --> R
+            </pre>
+          </div>
+        </section>
+
+        <section id="modules">
+          <h2>4. Module reference</h2>
+
+          <h3 id="mod-ingest">4.1 <code class="inline">camarca/ingest.py</code></h3>
+          <p><strong>Role:</strong> Load ground truth, logs, traces, and metrics; normalize all time columns to UTC and integer nanoseconds (<code class="inline">timestamp_ns</code>); apply <code class="inline">filter_time_window</code>; time-bucket rows for alignment (<code class="inline">TIME_BUCKET_SECONDS</code> from config, default 30s).</p>
+          <p><strong>Performance:</strong> Prefers Parquet over CSV when <code class="inline">PREFER_PARQUET</code> is true; optional column pruning via <code class="inline">INGEST_COLUMNS_*</code> in <code class="inline">camarca/config.py</code>.</p>
+
+          <h3 id="mod-pipeline">4.2 <code class="inline">camarca/pipeline.py</code></h3>
+          <p><strong>Role:</strong> Orchestration and output formatting.</p>
+          <table>
+            <thead><tr><th>Symbol</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>HybridRCAResult</code></td><td>Dataclass: <code>start</code>, <code>end</code>, <code>rows</code> (counts), <code>dynamic_graph</code>, <code>fused_ranking</code>, <code>modality_confidence</code>, optional <code>llm_trace</code>, GT fields, and dataframe attachments.</td></tr>
+              <tr><td><code>run_hybrid_window</code></td><td>Main hybrid run from explicit timestamps.</td></tr>
+              <tr><td><code>run_hybrid_from_prompt</code></td><td>Parses two ISO UTC times from text, then calls <code>run_hybrid_window</code>.</td></tr>
+              <tr><td><code>compare_with_ground_truth</code></td><td>Joins in-window events from <code>data/graound_truth/groundtruth-2022-05-09.csv</code>; sets <code>gt_top1_match</code> when top prediction matches GT service prefix.</td></tr>
+              <tr><td><code>format_competition_output</code></td><td>Builds competition JSON: uuid, component, reason, 3-step reasoning trace (metrics, trace, log evidence snippets).</td></tr>
+              <tr><td><code>iterative_reasoning</code></td><td>Four LLM steps (hypothesis, cross-modal validate, refine, supervisor) when used with <code>RCAAgentPack</code>.</td></tr>
+              <tr><td><code>default_agent_payloads</code></td><td>Compact JSON strings for LLM agents from a <code>HybridRCAResult</code>.</td></tr>
+            </tbody>
+          </table>
+
+          <h3 id="mod-analysis">4.3 <code class="inline">camarca/analysis.py</code></h3>
+          <p><strong>Role:</strong> Feature construction, service labeling, call graph, anomaly detection, and hybrid fusion. Highlights:</p>
+          <ul>
+            <li><code>add_service_column</code> / <code>normalize_metric_service_label</code> — canonical service names from pods, <code>cmdb_id</code>, etc.</li>
+            <li><code>enrich_trace_with_parent_service</code> — resolves caller service per span for dependency edges.</li>
+            <li><code>apply_log_templates</code> — lightweight regex-based log templating; aggregates by template and service.</li>
+            <li><code>prepare_metrics_for_anomaly</code> + <code>detect_anomalies</code> — IsolationForest on numeric metric features; per-row <code>is_anomaly</code> flags.</li>
+            <li><code>build_dynamic_service_dependency_graph</code> — directed graph on services; edge attributes include a blended <code>graph_causality_score</code> (latency, errors, call frequency, etc.; see <code>config.py</code> weights).</li>
+            <li><code>residual_confidence_fusion</code> — per-service fusion score; incorporates fan-in dampening, leaf vs hub heuristics, broadcaster penalty for high out-degree “gateway” nodes, and baseline delta from pre/post windows.</li>
+            <li><code>modality_confidences</code> — calibrates global trace / metric / log confidences (log capped so it does not dominate).</li>
+          </ul>
+          <h4>Mathematical interpretation (practical)</h4>
+          <p>
+            Internally, most service-level terms are normalized to <code class="inline">[0, 1]</code> so modalities can be fused without one raw scale
+            (for example request counts) dominating another (for example latency means). A common normalization shape is:
+          </p>
+          <pre class="example"><code>x_norm(s) = (x(s) - min_s x(s)) / (max_s x(s) - min_s x(s) + ε)</code></pre>
+          <p>
+            For metrics, IsolationForest assigns each row a binary anomaly decision:
+          </p>
+          <pre class="example"><code>is_anomaly_i = 1 if IF(x_i) = -1 else 0</code></pre>
+          <p>
+            Service anomaly signal is then aggregated per service (count of anomalous rows) and normalized before fusion.
+            The final service score is a weighted combination of modality and graph evidence:
+          </p>
+          <pre class="example"><code>score(s) =
+  w_t · c_t · trace_signal(s)
++ w_m · c_m · metric_signal(s)
++ w_l · c_l · log_signal(s) · hub_scale(s)
++ w_g · graph_signal(s)
++ λ · baseline_delta(s)
+
+score'(s) = score(s) / (1 + broadcaster_penalty · max(0, out_degree(s) - gateway_floor))</code></pre>
+          <p>
+            where <code class="inline">c_t, c_m, c_l</code> are global modality confidences from <code class="inline">modality_confidences</code>,
+            and <code class="inline">baseline_delta(s)</code> measures deviation of the fault window from pre/post reference windows.
+            Intuitively: high local anomaly + strong incoming graph pressure + clear baseline shift pushes a service upward in rank.
+          </p>
+
+          <h3 id="mod-cache">4.4 <code class="inline">camarca/cache_store.py</code></h3>
+          <p>SHA1-keyed Parquet files under a cache directory. Used by the pipeline to avoid re-slicing huge day-level files for repeated same-window queries.</p>
+
+          <h3 id="mod-prompt">4.5 <code class="inline">camarca/prompt_pack.py</code> and <code class="inline">camarca/rca_openai.py</code></h3>
+          <p><code>RCAAgentPack</code> holds structured prompts (log, trace, metric, graph, supervisor) with JSON output contracts and shared guardrails (“no invented services”). <code>run_openai_rca</code> runs the pack; <code>rca_openai.py</code> is a CLI that hydrates agent inputs from <code>default_agent_payloads(run_hybrid_from_prompt(...))</code> and writes JSON (default <code class="inline">outputs/rca_openai.json</code>).</p>
+          <p><code>camarca/settings.py</code> loads <code class="inline">.env</code> for OpenAI model and API configuration.</p>
+
+          <h3 id="mod-cli">4.6 <code class="inline">camarca/cli.py</code>, <code class="inline">camarca/__main__.py</code>, <code class="inline">main.py</code></h3>
+          <p><code>uv run camarca</code> executes the CLI: parses natural-language window, runs hybrid + optional GT compare, prints competition JSON. Flags include <code class="inline">--with-llm</code>, <code class="inline">--output-format debug|competition</code>, <code class="inline">--component-granularity predicted|gt-aligned</code>, and force overrides for component or reason text.</p>
+
+          <h3 id="mod-api">4.7 <code class="inline">camarca/web_api.py</code> and <code class="inline">streamlit_app.py</code></h3>
+          <p><strong>FastAPI</strong> exposes <code class="inline">GET /health</code>, <code class="inline">GET /api/rca?prompt=...</code>, and <code class="inline">GET /api/stream?prompt=...</code> (Server-Sent Events: status steps then final result). CORS is open for local UI use.</p>
+          <p><strong>Streamlit</strong> connects to the API base URL, consumes the SSE stream for progress, and displays the JSON payload. Start API first, then <code class="inline">streamlit run streamlit_app.py</code>.</p>
+
+          <h3 id="mod-eval">4.8 <code class="inline">advanced_evaluation.py</code></h3>
+          <p>Offline evaluation: loads cases from ground truth, runs <code>run_hybrid_window</code> per case, supports fusion-weight tuning, failure-type boosts, optional LLM reranker, confusion matrices, and charts under <code class="inline">outputs/</code>. Suited for benchmarking, not required for a single interactive RCA run.</p>
+
+          <h3>4.9 Other package files (short)</h3>
+          <table>
+            <thead><tr><th>File</th><th>Role</th></tr></thead>
+            <tbody>
+              <tr><td><code>plotting.py</code></td><td>Visualization helpers for development or reports.</td></tr>
+              <tr><td><code>logging_utils.py</code></td><td>Central logging setup; used by CLIs.</td></tr>
+              <tr><td><code>convert_to_parquet.py</code> / <code>convert_to_partitioned.py</code></td><td>One-time or batch conversion of CSVs to Parquet (and partitioned layout) for speed.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="data-layout">
+          <h2>5. Data and directory layout</h2>
+          <p>Expected at runtime (paths referenced in code):</p>
+          <ul>
+            <li><code class="inline">data/logs/</code>, <code class="inline">data/traces/</code>, <code class="inline">data/metrics/</code> — day-stamped inputs (e.g. <code>2022-05-09</code>).</li>
+            <li><code class="inline">data/partitioned/&lt;modality&gt;/dt=YYYY-MM-DD/hour=HH/</code> — optional fast path for window loads.</li>
+            <li><code class="inline">data/graound_truth/groundtruth-2022-05-09.csv</code> — used by <code>compare_with_ground_truth</code> and evaluation (note the folder spelling in the repo).</li>
+            <li><code class="inline">outputs/cache/windows/</code> — automatic Parquet window cache.</li>
+            <li><code class="inline">outputs/</code> — evaluation figures, OpenAI JSON, etc.</li>
+          </ul>
+        </section>
+
+        <section id="config">
+          <h2>6. Configuration highlights (<code class="inline">camarca/config.py</code>)</h2>
+          <table>
+            <thead><tr><th>Setting (concept)</th><th>Typical effect</th></tr></thead>
+            <tbody>
+              <tr><td><code>TIME_BUCKET_SECONDS = 30</code></td><td>Aligns log/trace/metric events into buckets for aggregation.</td></tr>
+              <tr><td><code>IF_CONTAMINATION = 0.05</code></td><td>Isolation Forest outlier prior for metrics.</td></tr>
+              <tr><td><code>WEIGHT_TRACE / WEIGHT_METRIC / WEIGHT_LOG</code></td><td>Blend for building graph edge evidence from modalities.</td></tr>
+              <tr><td><code>HYBRID_W_TRACE_CONF / METRIC / LOG / GRAPH</code></td><td>Default fusion mix (0.25, 0.25, 0.20, 0.30) in <code>residual_confidence_fusion</code>.</td></tr>
+              <tr><td><code>FAN_IN_DAMPEN</code>, <code>LEAF_OUT_DEGREE_PENALTY</code>, <code>GATEWAY_OUT_DEGREE_FLOOR</code>, …</td><td>Graph heuristics so “sink” and fan-in behavior match microservice topologies more realistically.</td></tr>
+            </tbody>
+          </table>
+          <p>Override by editing the module for experiments; <code>advanced_evaluation.py</code> can also tune fusion weights in bulk runs.</p>
+        </section>
+
+        <section id="examples">
+          <h2>7. Runnable examples</h2>
+
+          <h3>7.1 CLI (hybrid RCA, competition JSON)</h3>
+          <pre class="example"><code>uv sync
+cp .env.example .env   # only if you use OpenAI features
+
+uv run camarca --prompt "A fault occurred from 2022-05-09T06:40:17Z to 2022-05-09T06:50:17Z. Please identify the root cause."
+
+# Debug: print window, row counts, top-5 fusion, GT overlap
+uv run camarca --prompt "..." --output-format debug
+
+# Optional LLM pass (requires OPENAI_API_KEY)
+uv run camarca --prompt "..." --with-llm --model gpt-4o-mini</code></pre>
+
+          <h3>7.2 Python API (programmatic window)</h3>
+          <pre class="example"><code>from camarca.pipeline import run_hybrid_window
+import pandas as pd
+
+start = pd.Timestamp("2022-05-09T06:40:17Z")
+end = pd.Timestamp("2022-05-09T06:50:17Z")
+res = run_hybrid_window(start, end)
+
+print("rows:", res.rows)                          # {logs, traces, metrics} counts
+print("top5:", res.fused_ranking[:5])            # (service, score) tuples
+print("modality_confidence:", res.modality_confidence)</code></pre>
+          <p class="caption">Same logical run as a natural-language prompt, but with explicit control over the time range in code.</p>
+
+          <h3>7.3 HTTP API</h3>
+          <pre class="example"><code>uv run uvicorn camarca.web_api:app --host 0.0.0.0 --port 8001
+
+# In another shell:
+curl -sG "http://127.0.0.1:8001/api/rca" --data-urlencode "prompt=A fault occurred from 2022-05-09T06:40:17Z to 2022-05-09T06:50:17Z. Please identify the root cause."</code></pre>
+
+          <h3>7.4 OpenAI pack only (after hybrid precompute)</h3>
+          <pre class="example"><code>uv run camarca-rca-openai --prompt "A fault occurred from 2022-05-09T06:40:17Z to 2022-05-09T06:50:17Z. Please identify the root cause."</code></pre>
+
+          <div class="note">
+            <strong>Prerequisite:</strong> the underlying CSV/Parquet for the incident day must be present under <code class="inline">data/</code> as shipped or converted; otherwise window loads return empty frames and rankings may be uninformative.
+          </div>
+        </section>
+
+        <section id="fusion">
+          <h2>8. Fusion math (concise)</h2>
+          <p>
+            For each service <em>s</em>, the fusion in <code class="inline">residual_confidence_fusion</code> combines normalized per-service signals
+            (trace, metric anomalies, log mass) with global modality confidences and a graph term derived from edge causality scores
+            (with fan-in and leaf heuristics). A baseline-delta term compares fault-window behavior to pre/post reference windows.
+            The implementation also applies a <strong>broadcaster penalty</strong> when out-degree is high, down-ranking “gateway” style nodes.
+          </p>
+          <p>Generic shape (see source for exact terms and normalizations):</p>
+          <pre class="example" style="background: #1e293b; color: #e2e8f0;"><code>score(s) ≈
+  w_trace  · trace_conf  · trace_signal(s)
++ w_metric · metric_conf · metric_signal(s)
++ w_log    · log_conf    · log_signal(s)   · hub_scale(s)
++ w_graph  · graph_signal(s)
++ λ · baseline_delta(s)
+
+# then optional gateway/broadcaster adjustment from out-degree</code></pre>
+          <p>Default <code>w_*</code> are set by <code class="inline">HYBRID_W_*</code> in <code class="inline">config.py</code>. The returned list is sorted by score descending.</p>
+        </section>
+
+        <section id="related">
+          <h2>9. Related documentation in this repo</h2>
+          <ul>
+            <li><code class="inline">README.md</code> — quick start, commands, Mermaid architecture (duplicated in spirit by this page with more detail).</li>
+            <li><code class="inline">docs/animated_architecture.html</code> — animated system diagram (stylistic variant).</li>
+            <li><code class="inline">docs/PROJECT_STRUCTURE.md</code> — structural notes.</li>
+            <li><code class="inline">docs/RESEARCH_PAPER_COMPARISON.md</code> — comparison to published approaches.</li>
+            <li><code class="inline">CAMARCA_colab.ipynb</code> — notebook walkthrough for Colab users.</li>
+          </ul>
+        </section>
+
+        <footer style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.9rem;">
+          <p>CAMARCA complete guide (HTML). Generated as project documentation. Open this file in any browser; diagrams require JavaScript (Mermaid CDN).</p>
+        </footer>
+      </main>
+    </div>
+  </div>
+
+  <div class="arch-modal" id="arch-modal" onclick="closeArchitecturePopup(event)">
+    <div class="arch-modal-card" role="dialog" aria-modal="true" aria-label="Large architecture diagram">
+      <div class="arch-modal-top">
+        <div class="arch-modal-title" id="arch-modal-title">CAMARCA Architecture (Large Animated View)</div>
+        <button class="arch-close-btn" type="button" onclick="closeArchitecturePopup()">Close</button>
+      </div>
+      <div class="arch-modal-body" id="arch-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Classic bundle: works when opening this file via file:// (ESM import often fails locally). -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" crossorigin="anonymous"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "neutral",
+      securityLevel: "loose",
+      flowchart: { curve: "basis" },
+    });
+
+    function applyArchitectureAnimation(root) {
+      if (!root) return;
+      const svgs = root.querySelectorAll("svg");
+      svgs.forEach((svg) => {
+        const edgeSelectors = [
+          ".edgePath path",
+          ".flowchart-link",
+          "path.flowchart-link",
+          "path[marker-end]",
+        ];
+        svg.querySelectorAll(edgeSelectors.join(",")).forEach((p) => {
+          p.style.strokeDasharray = "8 6";
+          p.style.animation = "edgeFlow 8s linear infinite";
+          p.style.strokeWidth = "2.4";
+          p.style.stroke = "#2f6fe4";
+        });
+
+        const nodeSelectors = [
+          ".node rect",
+          ".node path",
+          ".node polygon",
+          ".default rect",
+          ".default path",
+          ".default polygon",
+        ];
+        svg.querySelectorAll(nodeSelectors.join(",")).forEach((n) => {
+          n.style.animation = "nodePulse 2.4s ease-in-out infinite";
+          n.style.transformOrigin = "center";
+          n.style.fill = "#dfeeff";
+          n.style.stroke = "#2455b5";
+          n.style.strokeWidth = "1.8";
+        });
+
+        svg.querySelectorAll(".cluster rect, .cluster polygon").forEach((c) => {
+          c.style.animation = "clusterGlow 3.2s ease-in-out infinite";
+          c.style.fill = "#ecf7ff";
+          c.style.stroke = "#7db6ff";
+          c.style.strokeWidth = "1.6";
+          c.style.opacity = "0.98";
+        });
+      });
+    }
+
+    function initArchitectureAnimation() {
+      const wraps = [
+        document.getElementById("arch-diagram-wrap"),
+        document.getElementById("layered-diagram-wrap"),
+      ].filter(Boolean);
+      wraps.forEach((wrap) => {
+        applyArchitectureAnimation(wrap);
+        const observer = new MutationObserver(() => applyArchitectureAnimation(wrap));
+        observer.observe(wrap, { childList: true, subtree: true });
+        // Re-apply once more in case Mermaid renders asynchronously after load.
+        setTimeout(() => applyArchitectureAnimation(wrap), 500);
+        setTimeout(() => applyArchitectureAnimation(wrap), 1400);
+      });
+    }
+
+    function openDiagramPopup(sourceWrapId, title) {
+      const modal = document.getElementById("arch-modal");
+      const titleEl = document.getElementById("arch-modal-title");
+      const body = document.getElementById("arch-modal-body");
+      const source = document.querySelector(`#${sourceWrapId} svg`)
+        || document.querySelector(`#${sourceWrapId} .arch-mermaid`)
+        || document.querySelector(`#${sourceWrapId} .mermaid`);
+      if (!modal || !body || !source) return;
+      if (titleEl && title) titleEl.textContent = title;
+      body.innerHTML = "";
+      const clone = source.cloneNode(true);
+      if (clone.tagName && clone.tagName.toLowerCase() === "svg") {
+        clone.style.width = "100%";
+        clone.style.minWidth = "1220px";
+        clone.style.height = "auto";
+      }
+      body.appendChild(clone);
+      applyArchitectureAnimation(body);
+      modal.classList.add("open");
+    }
+
+    function openArchitecturePopup() {
+      openDiagramPopup("arch-diagram-wrap", "CAMARCA Architecture (Large Animated View)");
+    }
+
+    function openLayeredPopup() {
+      openDiagramPopup("layered-diagram-wrap", "Layered Data Loading (Large Animated View)");
+    }
+
+    function closeArchitecturePopup(event) {
+      const modal = document.getElementById("arch-modal");
+      if (!modal) return;
+      if (event && event.target && event.target.id !== "arch-modal") return;
+      modal.classList.remove("open");
+    }
+
+    function setupTocRouting() {
+      const links = document.querySelectorAll('nav.toc a[href^="#"]');
+      links.forEach((link) => {
+        link.addEventListener("click", (event) => {
+          const href = link.getAttribute("href");
+          if (!href || href.length < 2) return;
+          const target = document.querySelector(href);
+          if (!target) return;
+          event.preventDefault();
+          const top = target.getBoundingClientRect().top + window.scrollY - 8;
+          window.scrollTo({ top, behavior: "smooth" });
+          history.replaceState(null, "", href);
+        });
+      });
+    }
+
+    window.addEventListener("load", initArchitectureAnimation);
+    window.addEventListener("load", setupTocRouting);
+  </script>
+</body>
+</html>

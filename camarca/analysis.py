@@ -668,35 +668,76 @@ def build_dynamic_service_dependency_graph(
     return g
 
 
+def _trace_modality_strength(traces_enriched: pd.DataFrame) -> float:
+    """0–1 strength from duration and status; calibrated so healthy windows sit mid-range."""
+    if traces_enriched is None or traces_enriched.empty:
+        return 0.0
+    parts: list[float] = []
+    if "duration" in traces_enriched.columns:
+        d = pd.to_numeric(traces_enriched["duration"], errors="coerce")
+        med = float(d.median()) or 1.0
+        # 1.5x median: softer than 2x, scaled so typical stress maps above ~0.2 raw
+        frac = float((d > (1.5 * med)).mean())
+        parts.append(min(1.0, frac * 2.0))
+    if "status_code" in traces_enriched.columns:
+        st = pd.to_numeric(traces_enriched["status_code"], errors="coerce").fillna(0)
+        parts.append(min(1.0, float((st != 0).mean()) * 1.8))
+    return float(sum(parts) / max(len(parts), 1)) if parts else 0.0
+
+
+def _metric_modality_strength(metrics_scored: pd.DataFrame) -> float:
+    """
+    0–1 strength: IF row anomaly rate is ~5% so we scale it; also use share of
+    services with at least one anomalous bucket.
+    """
+    if metrics_scored is None or metrics_scored.empty or "is_anomaly" not in metrics_scored.columns:
+        return 0.0
+    s = metrics_scored["is_anomaly"].fillna(False).astype(bool)
+    row_r = float(s.mean())
+    row_term = min(1.0, row_r * 10.0)
+    svc_term = 0.0
+    if "service" in metrics_scored.columns:
+        nsvc = int(metrics_scored["service"].nunique())
+        if nsvc > 0:
+            n_anom_svc = int(metrics_scored.loc[s, "service"].nunique())
+            svc_term = n_anom_svc / nsvc
+    return float(min(1.0, 0.4 * row_term + 0.6 * svc_term))
+
+
+def _log_modality_strength(log_templates: pd.DataFrame) -> float:
+    """0–1 template concentration; avoids huge values from the old q95*len/total rule."""
+    if log_templates is None or log_templates.empty or "count" not in log_templates.columns:
+        return 0.0
+    total = float(log_templates["count"].sum()) or 1.0
+    if "template" in log_templates.columns:
+        top = log_templates.groupby("template", dropna=False)["count"].sum().sort_values(ascending=False)
+        top_share = float(top.head(3).sum()) / total
+    else:
+        top_share = 1.0
+    return float(min(1.0, top_share))
+
+
 def modality_confidences(
     traces_enriched: pd.DataFrame,
     log_templates: pd.DataFrame,
     metrics_scored: pd.DataFrame,
 ) -> dict[str, float]:
-    """Estimate modality confidence for fusion."""
-    trace_conf = 0.0
-    if traces_enriched is not None and not traces_enriched.empty and "duration" in traces_enriched.columns:
-        med = float(traces_enriched["duration"].median())
-        if med > 0:
-            trace_conf = float((traces_enriched["duration"] > (2.0 * med)).mean())
-    # Status-code errors carry strong trace evidence; blend with duration-based trace confidence.
-    if traces_enriched is not None and not traces_enriched.empty and "status_code" in traces_enriched.columns:
-        st = pd.to_numeric(traces_enriched["status_code"], errors="coerce").fillna(0)
-        status_conf = float((st != 0).mean())
-        trace_conf = 0.7 * float(trace_conf) + 0.3 * float(status_conf)
-    metric_conf = 0.0
-    if metrics_scored is not None and not metrics_scored.empty and "is_anomaly" in metrics_scored.columns:
-        metric_conf = float(metrics_scored["is_anomaly"].mean())
-    log_conf = 0.0
-    if log_templates is not None and not log_templates.empty and "count" in log_templates.columns:
-        total = float(log_templates["count"].sum())
-        if total > 0:
-            log_conf = float(log_templates["count"].quantile(0.95) / total * len(log_templates))
-            log_conf = min(max(log_conf, 0.0), 1.0)
+    """
+    Calibrated confidences in ~[0.2, 0.9] for trace/metric with typical fault windows
+    near 0.5; log capped so it does not dominate trace/metric.
+    """
+    t_strength = _trace_modality_strength(traces_enriched)
+    m_strength = _metric_modality_strength(metrics_scored)
+    l_strength = _log_modality_strength(log_templates)
+    # Map 0..1 strength -> confidence centered near 0.5 for mid-range strength
+    trace_conf = 0.3 + 0.6 * t_strength
+    metric_conf = 0.3 + 0.6 * m_strength
+    # Log: cap at 0.5 so trace/metric get fair relative weight
+    log_conf = min(0.5, 0.15 + 0.4 * l_strength)
     return {
-        "trace_confidence": min(max(trace_conf, 0.0), 1.0),
-        "metric_confidence": min(max(metric_conf, 0.0), 1.0),
-        "log_confidence": min(max(log_conf, 0.0), 1.0),
+        "trace_confidence": float(min(0.95, max(0.1, trace_conf))),
+        "metric_confidence": float(min(0.95, max(0.1, metric_conf))),
+        "log_confidence": float(min(0.5, max(0.1, log_conf))),
     }
 
 

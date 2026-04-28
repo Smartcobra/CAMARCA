@@ -277,6 +277,24 @@ def _normalized_map(values: dict[str, float]) -> dict[str, float]:
     return {k: float(v) / float(vmax) for k, v in values.items()}
 
 
+def _reranker_feature_cols_num() -> list[str]:
+    return [
+        "rank_pos",
+        "fused_score",
+        "trace_mean_duration",
+        "log_error_mass",
+        "metric_anomaly_mass",
+        "graph_in_causal",
+        "graph_out_causal",
+        "out_degree",
+        "in_degree",
+        "support_modalities",
+        "modality_agreement",
+        "score_gap_to_top",
+        "score_margin_next",
+    ]
+
+
 def _candidate_score_map(art: CaseArtifacts, weights: dict[str, float], use_failure_policy: bool) -> dict[str, float]:
     case = art.case
     boosts = _failure_type_boosts(case.gt_failure_type) if use_failure_policy else {"trace": 1.0, "metric": 1.0, "log": 1.0, "graph": 1.0}
@@ -313,11 +331,11 @@ def _candidate_score_map(art: CaseArtifacts, weights: dict[str, float], use_fail
             + alpha["metric"] * float(metric_sr.get(s, 0.0))
             + alpha["log"] * float(logk.get(s, 0.0))
         )
-    # Evidence gate: prefer candidates observed in >=2 modalities.
+    # Soft evidence gate: avoid over-penalizing true roots that spike in one strong modality.
     for s in list(scores):
         supports = int(s in trace) + int(s in metric_sr) + int(s in logk)
-        if supports < 2:
-            scores[s] *= 0.75
+        support_ratio = supports / 3.0
+        scores[s] *= 0.78 + (0.22 * support_ratio)
     return scores
 
 
@@ -348,6 +366,11 @@ def _service_feature_frame(
 
     ranked = sorted(score_map.items(), key=lambda x: x[1], reverse=True)
     rank_map = {lbl: (i + 1, float(score)) for i, (lbl, score) in enumerate(ranked)}
+    top_score = float(ranked[0][1]) if ranked else 0.0
+    next_score_by_service: dict[str, float] = {}
+    for i, (svc, score) in enumerate(ranked):
+        nxt = float(ranked[i + 1][1]) if i + 1 < len(ranked) else 0.0
+        next_score_by_service[str(svc)] = nxt
     # Dedup with first occurrence preserved by rank.
     seen: set[str] = set()
     rows: list[dict[str, Any]] = []
@@ -375,6 +398,10 @@ def _service_feature_frame(
         out_edges = list(g.out_edges(raw_lbl, data=True)) if g is not None and raw_lbl in g else []
         in_causal = float(sum(float(d.get("graph_causality_score", 0.0)) for _, _, d in in_edges))
         out_causal = float(sum(float(d.get("graph_causality_score", 0.0)) for _, _, d in out_edges))
+        support_modalities = int(raw_lbl in trace_by_service.index) + int(raw_lbl in metric_by_service.index) + int(
+            raw_lbl in log_by_service.index
+        )
+        next_score = float(next_score_by_service.get(raw_lbl, 0.0))
         rows.append(
             {
                 "case_id": case.case_id,
@@ -389,6 +416,10 @@ def _service_feature_frame(
                 "graph_out_causal": out_causal,
                 "out_degree": int(g.out_degree(raw_lbl)) if g is not None and raw_lbl in g else 0,
                 "in_degree": int(g.in_degree(raw_lbl)) if g is not None and raw_lbl in g else 0,
+                "support_modalities": support_modalities,
+                "modality_agreement": float(support_modalities) / 3.0,
+                "score_gap_to_top": max(0.0, top_score - float(fused_score)),
+                "score_margin_next": max(0.0, float(fused_score) - next_score),
                 "is_true": 1 if raw_lbl == case.gt_component_service else 0,
             }
         )
@@ -416,17 +447,7 @@ def _build_reranker_dataset(
 
 
 def _make_reranker_pipeline() -> Pipeline:
-    feature_cols_num = [
-        "rank_pos",
-        "fused_score",
-        "trace_mean_duration",
-        "log_error_mass",
-        "metric_anomaly_mass",
-        "graph_in_causal",
-        "graph_out_causal",
-        "out_degree",
-        "in_degree",
-    ]
+    feature_cols_num = _reranker_feature_cols_num()
     pre = ColumnTransformer(
         transformers=[
             ("num", Pipeline([("scaler", StandardScaler())]), feature_cols_num),
@@ -440,17 +461,7 @@ def _make_reranker_pipeline() -> Pipeline:
 def _train_reranker_ensemble(train_df: pd.DataFrame, n_splits: int = 4) -> list[Pipeline]:
     if train_df.empty or train_df["is_true"].sum() == 0:
         return []
-    feature_cols_num = [
-        "rank_pos",
-        "fused_score",
-        "trace_mean_duration",
-        "log_error_mass",
-        "metric_anomaly_mass",
-        "graph_in_causal",
-        "graph_out_causal",
-        "out_degree",
-        "in_degree",
-    ]
+    feature_cols_num = _reranker_feature_cols_num()
     X = train_df[feature_cols_num + ["failure_type", "case_id"]].copy()
     y = train_df["is_true"].astype(int)
     if y.nunique() < 2:
@@ -503,17 +514,7 @@ def _apply_reranker(
         feat = _service_feature_frame(art, weights=weights, use_failure_policy=use_failure_policy)
         if feat.empty:
             continue
-        feature_cols_num = [
-            "rank_pos",
-            "fused_score",
-            "trace_mean_duration",
-            "log_error_mass",
-            "metric_anomaly_mass",
-            "graph_in_causal",
-            "graph_out_causal",
-            "out_degree",
-            "in_degree",
-        ]
+        feature_cols_num = _reranker_feature_cols_num()
         X = feat[feature_cols_num + ["failure_type"]]
         prob_list = [m.predict_proba(X)[:, 1] for m in models]
         p = np.mean(np.vstack(prob_list), axis=0)

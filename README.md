@@ -120,3 +120,10 @@ Endpoints:
 - `GET /health`
 - `GET /api/rca?prompt=...`
 - `GET /api/stream?prompt=...` (SSE)
+
+
+```bash
+ uv run python advanced_evaluation.py --max-cases 10 --enable-llm-reranker --llm-rerank-topk 5
+```
+ 
+
