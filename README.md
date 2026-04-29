@@ -121,9 +121,30 @@ Endpoints:
 - `GET /api/rca?prompt=...`
 - `GET /api/stream?prompt=...` (SSE)
 
+## Advanced Evaluation
+
+Single-run evaluation:
 
 ```bash
- uv run python advanced_evaluation.py --max-cases 10 --enable-llm-reranker --llm-rerank-topk 5
+uv run python advanced_evaluation.py --max-cases 0
 ```
- 
+
+Repeated stratified evaluation (recommended for stable conclusions):
+
+```bash
+uv run python advanced_evaluation.py --max-cases 0 --num-repeats 5 --seed 42
+```
+
+Quick smoke run:
+
+```bash
+uv run python advanced_evaluation.py --max-cases 10 --num-repeats 2
+```
+
+How to read outputs:
+- `outputs/evaluation/predictions.csv`: per-case predictions (includes `repeat_id` when repeats > 1).
+- `outputs/evaluation/summary.json`:
+  - `metrics_service_track`: averaged service-track metrics across repeats.
+  - `repeat_details`: per-repeat metrics, selected weights, and model choice.
+- `accuracy_curve.png` and `loss_curve.png` plot running values for the last repeat's validation/test splits (not all cases in one line).
 

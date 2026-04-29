@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import os
+import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,6 +121,48 @@ def split_cases(cases: list[EvalCase], train_ratio: float, val_ratio: float, tes
     }
 
 
+def split_cases_stratified(
+    cases: list[EvalCase], train_ratio: float, val_ratio: float, test_ratio: float, *, seed: int
+) -> dict[str, list[EvalCase]]:
+    total = train_ratio + val_ratio + test_ratio
+    if not math.isclose(total, 1.0, rel_tol=1e-6, abs_tol=1e-6):
+        raise ValueError("train/val/test ratios must sum to 1.0")
+    n = len(cases)
+    n_train = int(n * train_ratio)
+    n_val = int(n * val_ratio)
+    n_test = n - n_train - n_val
+    if min(n_train, n_val, n_test) <= 0:
+        raise ValueError("Split produced empty subset. Increase cases or adjust ratios.")
+
+    rng = random.Random(seed)
+    buckets: dict[tuple[str, str], list[EvalCase]] = {}
+    for c in cases:
+        key = (str(c.gt_level).lower(), str(c.gt_failure_type).lower())
+        buckets.setdefault(key, []).append(c)
+    for b in buckets.values():
+        rng.shuffle(b)
+    keys = list(buckets.keys())
+    rng.shuffle(keys)
+
+    out = {"train": [], "val": [], "test": []}
+    targets = {"train": n_train, "val": n_val, "test": n_test}
+    remaining = targets.copy()
+
+    for k in keys:
+        for c in buckets[k]:
+            candidates = [s for s in ("train", "val", "test") if remaining[s] > 0]
+            if not candidates:
+                candidates = ["train", "val", "test"]
+            pick = max(
+                candidates,
+                key=lambda s: (remaining[s], (remaining[s] / max(targets[s], 1))),
+            )
+            out[pick].append(c)
+            if remaining[pick] > 0:
+                remaining[pick] -= 1
+    return out
+
+
 def _is_service_evaluable(case: EvalCase) -> bool:
     return not case.gt_component_service.startswith("node-")
 
@@ -179,15 +222,22 @@ def _rank_metrics_from_ranking(ranking: list[tuple[str, float]], truth: str) -> 
     hit3 = 1 if 0 < true_rank <= 3 else 0
     hit5 = 1 if 0 < true_rank <= 5 else 0
     mrr = 1.0 / true_rank if true_rank > 0 else 0.0
+    # Single relevant item per case => AP equals reciprocal rank.
+    ap = 1.0 / true_rank if true_rank > 0 else 0.0
     ndcg = 1.0 / math.log2(true_rank + 1) if true_rank > 0 else 0.0
     rca_score = 0.4 * hit1 + 0.3 * mrr + 0.3 * ndcg
     return {
         "ranking_size": n,
         "true_rank": true_rank,
         "top1_accuracy": hit1,
+        "hit_rate_at_1": hit1,
         "hit_at_3": hit3,
         "hit_at_5": hit5,
+        "hit_rate_at_3": hit3,
+        "hit_rate_at_5": hit5,
         "mrr": float(mrr),
+        "ap": float(ap),
+        "map": float(ap),
         "ndcg": float(ndcg),
         "rank_loss": float(rank_loss),
         "rca_score": float(rca_score),
@@ -339,10 +389,41 @@ def _candidate_score_map(art: CaseArtifacts, weights: dict[str, float], use_fail
     return scores
 
 
+def _support_modalities_by_service(art: CaseArtifacts) -> dict[str, int]:
+    trace = set(_trace_anchor_scores(art).keys())
+    metric = set(_metric_symmetric_ratio_scores(art).keys())
+    logk = set(_log_keyword_scores(art).keys())
+    services = trace | metric | logk
+    out: dict[str, int] = {}
+    for s in services:
+        out[str(s)] = int(s in trace) + int(s in metric) + int(s in logk)
+    return out
+
+
+def _apply_top_margin_fallback(
+    ordered: list[tuple[str, float]],
+    support_map: dict[str, int],
+    *,
+    margin_threshold: float = 0.03,
+) -> list[tuple[str, float]]:
+    if len(ordered) < 2:
+        return ordered
+    s1, p1 = ordered[0]
+    s2, p2 = ordered[1]
+    if (float(p1) - float(p2)) >= margin_threshold:
+        return ordered
+    sup1 = int(support_map.get(s1, 0))
+    sup2 = int(support_map.get(s2, 0))
+    if sup2 >= 2 and sup2 >= (sup1 + 1):
+        return [ordered[1], ordered[0], *ordered[2:]]
+    return ordered
+
+
 def _score_service_case(art: CaseArtifacts, weights: dict[str, float], use_failure_policy: bool) -> dict[str, Any]:
     case = art.case
     score_map = _candidate_score_map(art, weights=weights, use_failure_policy=use_failure_policy)
     dedup = sorted(score_map.items(), key=lambda x: x[1], reverse=True)
+    dedup = _apply_top_margin_fallback(dedup, _support_modalities_by_service(art))
 
     pred_top1 = dedup[0][0] if dedup else "insufficient_evidence"
     m = _rank_metrics_from_ranking(dedup, case.gt_component_service)
@@ -521,6 +602,8 @@ def _apply_reranker(
         feat = feat.assign(rerank_score=p)
         feat = feat.sort_values("rerank_score", ascending=False).reset_index(drop=True)
         ordered = [(str(r["service"]), float(r["rerank_score"])) for _, r in feat.iterrows()]
+        support_map = {str(r["service"]): int(r["support_modalities"]) for _, r in feat.iterrows()}
+        ordered = _apply_top_margin_fallback(ordered, support_map, margin_threshold=0.04)
         truth = art.case.gt_component_service
         m = _rank_metrics_from_ranking(ordered, truth)
         out.loc[out["case_id"] == cid, "pred_top1_service"] = ordered[0][0] if ordered else "insufficient_evidence"
@@ -551,6 +634,7 @@ def _score_node_case(art: CaseArtifacts) -> dict[str, Any]:
         pred = max(node_scores.items(), key=lambda x: x[1])[0]
     hit1 = 1 if pred == truth else 0
     mrr = float(hit1)
+    ap = float(hit1)
     ndcg = float(hit1)
     rank_loss = 0.0 if hit1 else 1.0
     rca_score = 0.4 * hit1 + 0.3 * mrr + 0.3 * ndcg
@@ -560,9 +644,14 @@ def _score_node_case(art: CaseArtifacts) -> dict[str, Any]:
         "ranking_size": 1,
         "true_rank": 1 if hit1 else 0,
         "top1_accuracy": hit1,
+        "hit_rate_at_1": hit1,
         "hit_at_3": hit1,
         "hit_at_5": hit1,
+        "hit_rate_at_3": hit1,
+        "hit_rate_at_5": hit1,
         "mrr": mrr,
+        "ap": ap,
+        "map": ap,
         "ndcg": ndcg,
         "rank_loss": rank_loss,
         "rca_score": rca_score,
@@ -610,9 +699,13 @@ def _aggregate(df: pd.DataFrame, split: str) -> dict[str, Any]:
         "split": split,
         "num_cases": int(len(sdf)),
         "top1_accuracy": float(sdf["top1_accuracy"].mean()),
+        "hit_rate_at_1": float(sdf["hit_rate_at_1"].mean()),
         "hit_at_3": float(sdf["hit_at_3"].mean()),
         "hit_at_5": float(sdf["hit_at_5"].mean()),
+        "hit_rate_at_3": float(sdf["hit_rate_at_3"].mean()),
+        "hit_rate_at_5": float(sdf["hit_rate_at_5"].mean()),
         "mrr": float(sdf["mrr"].mean()),
+        "map": float(sdf["map"].mean()),
         "ndcg": float(sdf["ndcg"].mean()),
         "rank_loss": float(sdf["rank_loss"].mean()),
         "rca_score": float(sdf["rca_score"].mean()),
@@ -670,7 +763,7 @@ def _plot_curves(df: pd.DataFrame, out_dir: Path) -> None:
     plt.savefig(out_dir / "loss_curve.png", dpi=160)
     plt.close()
 
-    metrics = ["mrr", "ndcg", "rca_score"]
+    metrics = ["mrr", "map", "hit_rate_at_3", "ndcg"]
     val_scores = [float(val[m].mean()) for m in metrics]
     test_scores = [float(test[m].mean()) for m in metrics]
     x = range(len(metrics))
@@ -678,9 +771,9 @@ def _plot_curves(df: pd.DataFrame, out_dir: Path) -> None:
     plt.figure(figsize=(8, 5))
     plt.bar([i - width / 2 for i in x], val_scores, width=width, label="Validation")
     plt.bar([i + width / 2 for i in x], test_scores, width=width, label="Test")
-    plt.xticks(list(x), [m.upper() for m in metrics])
+    plt.xticks(list(x), ["MRR", "MAP", "HIT@3", "NDCG"])
     plt.ylim(0.0, 1.0)
-    plt.title("Advanced RCA Metrics")
+    plt.title("Ranking Quality Metrics")
     plt.grid(axis="y", alpha=0.3)
     plt.legend()
     plt.tight_layout()
@@ -767,6 +860,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--test-ratio", type=float, default=0.2)
     p.add_argument("--max-cases", type=int, default=0, help="0 means all cases")
     p.add_argument("--output-dir", default="outputs/evaluation")
+    p.add_argument("--num-repeats", type=int, default=1, help="Run repeated evaluation with different stratified splits.")
+    p.add_argument("--seed", type=int, default=42, help="Base random seed for split generation.")
+    p.add_argument("--disable-stratified-split", action="store_true")
     p.add_argument("--disable-failure-policy", action="store_true")
     p.add_argument("--disable-weight-tuning", action="store_true")
     p.add_argument("--disable-reranker", action="store_true")
@@ -785,79 +881,159 @@ def main() -> None:
     cases = load_cases(gt_csv, args.window_before_seconds, args.window_after_seconds)
     if args.max_cases > 0:
         cases = cases[: args.max_cases]
-    splits = split_cases(cases, args.train_ratio, args.val_ratio, args.test_ratio)
-    split_map = {c.case_id: s for s, cs in splits.items() for c in cs}
 
     artifacts = _build_artifacts(cases)
 
     use_failure_policy = not args.disable_failure_policy
-    tuning_stats: dict[str, float] = {}
+    repeat_frames: list[pd.DataFrame] = []
+    repeat_summaries: list[dict[str, Any]] = []
+    reranker_any_used = False
+    tuning_rank_losses: list[float] = []
+    tuning_mrrs: list[float] = []
+    selected_weights_list: list[dict[str, float]] = []
+    selected_models: list[str] = []
+    baseline_val_losses: list[float] = []
 
-    baseline_df = _evaluate_with_policy(
-        artifacts,
-        split_map=split_map,
-        weights=DEFAULT_WEIGHTS,
-        use_failure_policy=False,
-    )
-    baseline_val = _aggregate_filtered(baseline_df, "val", "is_service_evaluable", 1)
-    baseline_val_loss = float(baseline_val.get("rank_loss", 1.0))
+    for repeat_idx in range(int(max(args.num_repeats, 1))):
+        split_seed = int(args.seed) + repeat_idx
+        if args.disable_stratified_split:
+            splits = split_cases(cases, args.train_ratio, args.val_ratio, args.test_ratio)
+        else:
+            splits = split_cases_stratified(cases, args.train_ratio, args.val_ratio, args.test_ratio, seed=split_seed)
+        split_map = {c.case_id: s for s, cs in splits.items() for c in cs}
+        tuning_stats: dict[str, float] = {}
 
-    selected_weights = DEFAULT_WEIGHTS.copy()
-    selected_use_failure_policy = use_failure_policy
-    selected_model_label = "baseline"
-    selected_df = baseline_df
-
-    if not args.disable_weight_tuning:
-        tuned_weights, tuning_stats = _tune_weights(
-            artifacts,
-            train_ids={c.case_id for c in splits["train"]},
-            use_failure_policy=use_failure_policy,
-        )
-        tuned_df = _evaluate_with_policy(
+        baseline_df = _evaluate_with_policy(
             artifacts,
             split_map=split_map,
-            weights=tuned_weights,
-            use_failure_policy=use_failure_policy,
+            weights=DEFAULT_WEIGHTS,
+            use_failure_policy=False,
         )
-        tuned_val = _aggregate_filtered(tuned_df, "val", "is_service_evaluable", 1)
-        tuned_val_loss = float(tuned_val.get("rank_loss", 1.0))
+        baseline_val = _aggregate_filtered(baseline_df, "val", "is_service_evaluable", 1)
+        baseline_val_loss = float(baseline_val.get("rank_loss", 1.0))
+        baseline_val_losses.append(baseline_val_loss)
 
-        if tuned_val_loss < baseline_val_loss:
-            selected_weights = tuned_weights
-            selected_use_failure_policy = use_failure_policy
-            selected_model_label = "tuned"
-            selected_df = tuned_df
-        print(f"Selected fusion weights: {selected_weights}")
-        print(f"Tuning stats: {tuning_stats}")
+        selected_weights = DEFAULT_WEIGHTS.copy()
+        selected_use_failure_policy = use_failure_policy
+        selected_model_label = "baseline"
+        selected_df = baseline_df
 
-    reranker_used = False
-    if not args.disable_reranker:
-        train_ids = {c.case_id for c in splits["train"]}
-        train_ds = _build_reranker_dataset(
-            artifacts,
-            train_ids,
-            weights=selected_weights,
-            use_failure_policy=selected_use_failure_policy,
+        if not args.disable_weight_tuning:
+            tuned_weights, tuning_stats = _tune_weights(
+                artifacts,
+                train_ids={c.case_id for c in splits["train"]},
+                use_failure_policy=use_failure_policy,
+            )
+            tuned_df = _evaluate_with_policy(
+                artifacts,
+                split_map=split_map,
+                weights=tuned_weights,
+                use_failure_policy=use_failure_policy,
+            )
+            tuned_val = _aggregate_filtered(tuned_df, "val", "is_service_evaluable", 1)
+            tuned_val_loss = float(tuned_val.get("rank_loss", 1.0))
+            if tuned_val_loss < baseline_val_loss:
+                selected_weights = tuned_weights
+                selected_use_failure_policy = use_failure_policy
+                selected_model_label = "tuned"
+                selected_df = tuned_df
+
+        reranker_used = False
+        if not args.disable_reranker:
+            train_ids = {c.case_id for c in splits["train"]}
+            train_ds = _build_reranker_dataset(
+                artifacts,
+                train_ids,
+                weights=selected_weights,
+                use_failure_policy=selected_use_failure_policy,
+            )
+            reranker_models = _train_reranker_ensemble(train_ds)
+            reranked_df = _apply_reranker(
+                selected_df,
+                artifacts,
+                models=reranker_models,
+                weights=selected_weights,
+                use_failure_policy=selected_use_failure_policy,
+            )
+            base_val = _aggregate_filtered(selected_df, "val", "is_service_evaluable", 1)
+            rerank_val = _aggregate_filtered(reranked_df, "val", "is_service_evaluable", 1)
+            if float(rerank_val.get("rank_loss", 1.0)) <= float(base_val.get("rank_loss", 1.0)):
+                selected_df = reranked_df
+                selected_model_label = f"{selected_model_label}+reranker"
+                reranker_used = len(reranker_models) > 0
+
+        reranker_any_used = reranker_any_used or reranker_used
+        if tuning_stats:
+            tuning_rank_losses.append(float(tuning_stats.get("train_rank_loss", 1.0)))
+            tuning_mrrs.append(float(tuning_stats.get("train_mrr", 0.0)))
+        selected_weights_list.append(selected_weights.copy())
+        selected_models.append(selected_model_label)
+        run_df = selected_df.copy()
+        run_df["repeat_id"] = int(repeat_idx)
+        repeat_frames.append(run_df)
+        repeat_summaries.append(
+            {
+                "repeat_id": int(repeat_idx),
+                "seed": split_seed,
+                "selected_model": selected_model_label,
+                "selected_fusion_weights": selected_weights,
+                "baseline_val_service_rank_loss": baseline_val_loss,
+                "metrics_service_track": {
+                    "train": _aggregate_filtered(run_df, "train", "is_service_evaluable", 1),
+                    "val": _aggregate_filtered(run_df, "val", "is_service_evaluable", 1),
+                    "test": _aggregate_filtered(run_df, "test", "is_service_evaluable", 1),
+                },
+            }
         )
-        reranker_models = _train_reranker_ensemble(train_ds)
-        reranked_df = _apply_reranker(
-            selected_df,
-            artifacts,
-            models=reranker_models,
-            weights=selected_weights,
-            use_failure_policy=selected_use_failure_policy,
-        )
-        base_val = _aggregate_filtered(selected_df, "val", "is_service_evaluable", 1)
-        rerank_val = _aggregate_filtered(reranked_df, "val", "is_service_evaluable", 1)
-        if float(rerank_val.get("rank_loss", 1.0)) <= float(base_val.get("rank_loss", 1.0)):
-            selected_df = reranked_df
-            selected_model_label = f"{selected_model_label}+reranker"
-            reranker_used = len(reranker_models) > 0
+        print(f"[repeat {repeat_idx + 1}/{max(args.num_repeats, 1)}] Selected fusion weights: {selected_weights}")
+        print(f"[repeat {repeat_idx + 1}/{max(args.num_repeats, 1)}] Tuning stats: {tuning_stats}")
 
-    df = selected_df
+    df = pd.concat(repeat_frames, ignore_index=True) if repeat_frames else pd.DataFrame()
     df.to_csv(out_dir / "predictions.csv", index=False)
-    _plot_curves(df, out_dir)
-    _save_confusion(df, out_dir)
+    plot_df = repeat_frames[-1] if repeat_frames else df
+    _plot_curves(plot_df, out_dir)
+    _save_confusion(plot_df, out_dir)
+
+    def _mean_metric(per_repeat: list[dict[str, Any]], split: str, track: str) -> dict[str, Any]:
+        rows = [r[track][split] for r in per_repeat if split in r[track] and int(r[track][split].get("num_cases", 0)) > 0]
+        if not rows:
+            return {"split": split, "num_cases": 0}
+        keys = [k for k in rows[0].keys() if k not in {"split"}]
+        out: dict[str, Any] = {"split": split}
+        for k in keys:
+            vals = [float(x[k]) for x in rows if k in x]
+            if not vals:
+                continue
+            if k == "num_cases":
+                out[k] = int(round(sum(vals) / len(vals)))
+            else:
+                out[k] = float(sum(vals) / len(vals))
+        return out
+
+    def _mode_label(labels: list[str]) -> str:
+        if not labels:
+            return "baseline"
+        return max(set(labels), key=labels.count)
+
+    avg_selected_weights = (
+        {
+            "trace": float(sum(w["trace"] for w in selected_weights_list) / len(selected_weights_list)),
+            "metric": float(sum(w["metric"] for w in selected_weights_list) / len(selected_weights_list)),
+            "log": float(sum(w["log"] for w in selected_weights_list) / len(selected_weights_list)),
+            "graph": float(sum(w["graph"] for w in selected_weights_list) / len(selected_weights_list)),
+        }
+        if selected_weights_list
+        else DEFAULT_WEIGHTS.copy()
+    )
+    avg_tuning_stats = {
+        "train_rank_loss": float(sum(tuning_rank_losses) / len(tuning_rank_losses)) if tuning_rank_losses else 1.0,
+        "train_mrr": float(sum(tuning_mrrs) / len(tuning_mrrs)) if tuning_mrrs else 0.0,
+    }
+    metrics_avg = {
+        "train": _mean_metric(repeat_summaries, "train", "metrics_service_track"),
+        "val": _mean_metric(repeat_summaries, "val", "metrics_service_track"),
+        "test": _mean_metric(repeat_summaries, "test", "metrics_service_track"),
+    }
 
     summary = {
         "config": {
@@ -868,33 +1044,35 @@ def main() -> None:
             "val_ratio": args.val_ratio,
             "test_ratio": args.test_ratio,
             "max_cases": args.max_cases,
+            "num_repeats": int(max(args.num_repeats, 1)),
+            "seed": args.seed,
+            "stratified_split": not args.disable_stratified_split,
             "rank_loss_formula": "rank(true_root_cause)/N, else 1.0 if missing",
             "rca_score_formula": "0.4*Hit@1 + 0.3*MRR + 0.3*NDCG",
             "failure_policy_enabled": use_failure_policy,
             "weight_tuning_enabled": not args.disable_weight_tuning,
             "reranker_enabled": not args.disable_reranker,
             "selection_policy": "choose baseline vs tuned by lower val rank_loss (service track)",
-            "selected_model": selected_model_label,
+            "selected_model": _mode_label(selected_models),
         },
-        "selected_fusion_weights": selected_weights,
-        "selected_failure_policy_enabled": selected_use_failure_policy,
-        "baseline_val_service_rank_loss": baseline_val_loss,
-        "reranker_used": reranker_used,
-        "tuning_stats": tuning_stats,
+        "selected_fusion_weights": avg_selected_weights,
+        "selected_failure_policy_enabled": use_failure_policy,
+        "baseline_val_service_rank_loss": (
+            float(sum(baseline_val_losses) / len(baseline_val_losses)) if baseline_val_losses else 1.0
+        ),
+        "reranker_used": reranker_any_used,
+        "tuning_stats": avg_tuning_stats,
+        "repeat_details": repeat_summaries,
         "metrics": {
-            "train": _aggregate(df, "train"),
-            "val": _aggregate(df, "val"),
-            "test": _aggregate(df, "test"),
+            "train": _aggregate(plot_df, "train"),
+            "val": _aggregate(plot_df, "val"),
+            "test": _aggregate(plot_df, "test"),
         },
-        "metrics_service_track": {
-            "train": _aggregate_filtered(df, "train", "is_service_evaluable", 1),
-            "val": _aggregate_filtered(df, "val", "is_service_evaluable", 1),
-            "test": _aggregate_filtered(df, "test", "is_service_evaluable", 1),
-        },
+        "metrics_service_track": metrics_avg,
         "metrics_node_track": {
-            "train": _aggregate_filtered(df, "train", "is_service_evaluable", 0),
-            "val": _aggregate_filtered(df, "val", "is_service_evaluable", 0),
-            "test": _aggregate_filtered(df, "test", "is_service_evaluable", 0),
+            "train": _aggregate_filtered(plot_df, "train", "is_service_evaluable", 0),
+            "val": _aggregate_filtered(plot_df, "val", "is_service_evaluable", 0),
+            "test": _aggregate_filtered(plot_df, "test", "is_service_evaluable", 0),
         },
         "artifacts": {
             "predictions_csv": str(out_dir / "predictions.csv"),
